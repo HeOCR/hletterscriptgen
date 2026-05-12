@@ -8,11 +8,17 @@ downstream needs become clearer.
 
 - Python package and CLI (`version`, `schema`, `validate`, placeholder
   `generate`).
-- `letter_set.v1` JSON Schema + example fixture.
-- pytest suite + CLI smoke.
-- CI on Ubuntu/macOS, Python 3.11 / 3.12.
-- Tag-triggered release workflow that builds and attaches sdist + wheel.
-- Governance: AGENTS, CONTRIBUTING, LICENSE, LICENSE-POLICY.
+- `letter_set.v1` JSON Schema + example fixture; cross-field validation
+  for license-summary consistency and provenance integrity.
+- pytest suite + CLI smoke; ruff + mypy-strict in CI.
+- CI on Ubuntu/macOS, Python 3.11 / 3.12; SHA-pinned actions.
+- Tag-triggered release workflow that builds, `twine check`s, and
+  attaches sdist + wheel to a GitHub release.
+- PyPI publishing is intentionally **deferred** until the org sets up
+  PyPI trusted publishing; users install from GitHub release assets in
+  the meantime.
+- Governance: AGENTS, CONTRIBUTING, LICENSE, LICENSE-POLICY, SECURITY,
+  CODEOWNERS.
 
 ## M1 — Upstream integration contract
 
