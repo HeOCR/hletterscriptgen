@@ -76,7 +76,10 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             "path": str(args.path),
             "schema_id": LETTER_SET_SCHEMA_ID,
             "error_count": result.error_count,
-            "errors": [{"path": i.path, "message": i.message} for i in result.issues],
+            "errors": [
+                {"path": i.path, "message": i.message, "kind": i.kind}
+                for i in result.issues
+            ],
         }
         json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
         sys.stdout.write("\n")
