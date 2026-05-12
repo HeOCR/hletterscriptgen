@@ -65,6 +65,15 @@ class UpstreamCheckoutDirtyError(RuntimeError):
     """
 
 
+class UpstreamDetachedHeadError(RuntimeError):
+    """Raised when an upstream checkout is in detached HEAD state.
+
+    A detached HEAD commit may exist only locally, making the pinned
+    revision unreachable for anyone reproducing the run from the remote.
+    Check out a branch or tag before pinning.
+    """
+
+
 @dataclass(frozen=True)
 class UpstreamCreator:
     name: str
@@ -256,15 +265,29 @@ def upstream_pin_from_checkout(path: Path) -> tuple[str, str]:
       ``git remote get-url origin``.
     * ``revision`` is the current ``HEAD`` SHA.
 
-    Refuses (raises :class:`UpstreamCheckoutDirtyError`) when the
-    working tree is dirty. A dirty pin would silently misrepresent the
-    bytes the generator read.
+    Raises :class:`UpstreamCheckoutDirtyError` when the working tree is
+    dirty, and :class:`UpstreamDetachedHeadError` when HEAD is detached.
+    Both conditions risk pinning a revision that is unreachable on the
+    remote, breaking reproducibility for anyone re-running from the same
+    upstream spec.
     """
     porcelain = _run_git(path, "status", "--porcelain")
     if porcelain.strip():
         raise UpstreamCheckoutDirtyError(
             f"upstream checkout at {path} has uncommitted changes; "
             "commit, stash, or reset before pinning"
+        )
+    # ``git symbolic-ref`` exits non-zero when HEAD is detached.
+    sym_result = subprocess.run(
+        ["git", "-C", str(path), "symbolic-ref", "--quiet", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if sym_result.returncode != 0:
+        raise UpstreamDetachedHeadError(
+            f"upstream checkout at {path} is in detached HEAD state; "
+            "check out a branch or tag before pinning"
         )
     remote_url = _run_git(path, "remote", "get-url", "origin").strip()
     revision = _run_git(path, "rev-parse", "HEAD").strip()
@@ -275,6 +298,7 @@ __all__ = [
     "FORBIDDEN_VERIFICATION_STATUSES",
     "UpstreamCheckoutDirtyError",
     "UpstreamCreator",
+    "UpstreamDetachedHeadError",
     "UpstreamEntry",
     "UpstreamFile",
     "UpstreamLoadError",

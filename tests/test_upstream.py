@@ -9,6 +9,7 @@ import pytest
 
 from hletterscriptgen.upstream import (
     UpstreamCheckoutDirtyError,
+    UpstreamDetachedHeadError,
     UpstreamEntry,
     UpstreamLoadError,
     explain_ineligible,
@@ -163,6 +164,14 @@ def test_pin_refuses_dirty_checkout(tmp_path: Path) -> None:
     _init_repo(repo, "git@github.com:HeOCR/public-domain-hand-written-hebrew-scans.git")
     (repo / "README.md").write_text("dirty\n", encoding="utf-8")
     with pytest.raises(UpstreamCheckoutDirtyError):
+        upstream_pin_from_checkout(repo)
+
+
+def test_pin_refuses_detached_head(tmp_path: Path) -> None:
+    repo = tmp_path / "upstream"
+    rev = _init_repo(repo, "https://github.com/HeOCR/foo.git")
+    _git(repo, "checkout", "--detach", rev)
+    with pytest.raises(UpstreamDetachedHeadError):
         upstream_pin_from_checkout(repo)
 
 
