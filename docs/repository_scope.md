@@ -4,6 +4,27 @@
 per-writer Hebrew letter-glyph image sets in the HeOCR system. It is
 intentionally narrow.
 
+## Position in the HeOCR system (canonical)
+
+```
+public-domain-hand-written-hebrew-scans   (full-page scans, PD / CC / CC-BY)
+        │
+        ▼
+hletterscriptgen   (code/framework — this repo)
+        │           extract & group glyphs per writer
+        ▼
+hletterscript      (per-writer letter-set datasets)
+        │
+        ▼
+hocrsyngen         (composes synthetic Hebrew handwritten pages)
+        │
+        ▼
+hocrgen → HeOCR (mixed)  /  HeOCRsynth (synth-only)
+```
+
+Other docs that reference this picture should link here rather than
+copy it — only one diagram should ever rot.
+
 ## In scope
 
 - Python package, CLI, and schemas that define how a "letter set" is

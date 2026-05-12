@@ -1,13 +1,9 @@
 # Downstream handoff
 
-Letter sets produced here are **published** to
-[`HeOCR/hletterscript`](https://github.com/HeOCR/hletterscript). From
-there, [`HeOCR/hocrsyngen`](https://github.com/HeOCR/hocrsyngen) consumes
-them to compose synthetic Hebrew handwritten pages, which
-[`HeOCR/hocrgen`](https://github.com/HeOCR/hocrgen) folds into
-[`HeOCR/HeOCR`](https://github.com/HeOCR/HeOCR) (mixed releases) and
-[`HeOCR/HeOCRsynth`](https://github.com/HeOCR/HeOCRsynth)
-(synth-only releases).
+For the full ecosystem diagram see [repository scope](repository_scope.md).
+This page focuses on the boundary contracts between `hletterscriptgen`
+and its immediate downstream consumers (`hletterscript`, `hocrsyngen`,
+`hocrgen`).
 
 ## What `hletterscriptgen` ships
 

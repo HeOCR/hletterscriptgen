@@ -41,21 +41,12 @@ What does **not** live here:
 
 ## Position in the HeOCR system
 
-```
-public-domain-hand-written-hebrew-scans   (full-page scans, PD / CC / CC-BY)
-        │
-        ▼
-hletterscriptgen   (code/framework — this repo)
-        │           extract & group glyphs per writer
-        ▼
-hletterscript      (per-writer letter-set datasets)
-        │
-        ▼
-hocrsyngen         (composes synthetic Hebrew handwritten pages)
-        │
-        ▼
-hocrgen → HeOCR (mixed)  /  HeOCRsynth (synth-only)
-```
+`hletterscriptgen` reads rights-clean scans from
+`public-domain-hand-written-hebrew-scans`, produces per-writer letter
+sets that land in `hletterscript`, and ultimately feeds `hocrsyngen` /
+`hocrgen` / `HeOCR` / `HeOCRsynth`. See
+[`docs/repository_scope.md`](docs/repository_scope.md) for the full
+diagram and per-repo responsibilities.
 
 ## Install
 
