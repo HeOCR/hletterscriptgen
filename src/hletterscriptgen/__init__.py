@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from hletterscriptgen.hashing import canonical_json, config_hash
+
 __version__ = "0.1.0.dev0"
 LETTER_SET_SCHEMA_ID = "letter_set.v1"
 
@@ -30,4 +32,6 @@ __all__ = [
     "HEBREW_LETTERS",
     "LETTER_SET_SCHEMA_ID",
     "__version__",
+    "canonical_json",
+    "config_hash",
 ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from jsonschema import Draft202012Validator
 
+import hletterscriptgen
 from hletterscriptgen import ALLOWED_LICENSES, HEBREW_LETTERS
 from hletterscriptgen.validation import load_schema
 
@@ -36,3 +37,9 @@ def test_allowed_licenses_match_schema_enum() -> None:
     schema = load_schema()
     schema_enum = set(schema["$defs"]["license_id"]["enum"])
     assert set(ALLOWED_LICENSES) == schema_enum
+
+
+def test_generator_name_const_matches_package_name() -> None:
+    schema = load_schema()
+    name_const = schema["properties"]["generator"]["properties"]["name"]["const"]
+    assert name_const == hletterscriptgen.__name__

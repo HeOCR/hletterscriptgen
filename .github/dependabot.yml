@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Keep GitHub Actions SHA pins fresh. We pin every action to a commit
+  # SHA (see .github/workflows/*); without Dependabot those pins go
+  # stale forever.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Python runtime + tooling dependencies declared in pyproject.toml.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+      include: "scope"

@@ -40,9 +40,13 @@ is exercised by CI and must remain valid.
 
 ### `writer_id`
 
-Stable identifier scoped to this repository's view of the writer. Must
-remain stable across regenerations so downstream consumers can
-re-resolve a writer over time.
+Stable identifier for the writer. The authoritative namespace is the
+**publishing repo**, i.e.
+[`HeOCR/hletterscript`](https://github.com/HeOCR/hletterscript) — once
+a letter set is published there, its `writer_id` must be globally
+unique within that repo and must remain stable across regenerations so
+downstream consumers can re-resolve a writer over time. Unpublished
+generator runs may use any stable scheme.
 
 ### `writer_label`
 
@@ -86,6 +90,10 @@ computed as:
 Two runs with the same resolved config must yield identical hashes;
 two runs with any meaningful config difference must yield different
 hashes.
+
+The package ships a reference implementation:
+``hletterscriptgen.config_hash(payload)``. Use it rather than hand-rolling
+canonicalization in consumer code.
 
 ### `letters`
 
