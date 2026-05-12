@@ -20,14 +20,13 @@ they assume the document has the right shape.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from importlib import resources
-from pathlib import PurePosixPath
-from pathlib import Path
-from typing import Any, Iterable
+from pathlib import Path, PurePosixPath
+from typing import Any, cast
 
 from jsonschema import Draft202012Validator
-
 
 SCHEMA_PACKAGE = "hletterscriptgen.schemas"
 SCHEMA_FILE = "letter_set.schema.json"
@@ -41,7 +40,7 @@ def load_schema() -> dict[str, Any]:
     schema_text = (
         resources.files(SCHEMA_PACKAGE).joinpath(SCHEMA_FILE).read_text(encoding="utf-8")
     )
-    return json.loads(schema_text)
+    return cast("dict[str, Any]", json.loads(schema_text))
 
 
 @dataclass(frozen=True)

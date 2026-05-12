@@ -17,7 +17,6 @@ from hletterscriptgen.cli import (
     main,
 )
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO_ROOT / "examples" / "letter_set" / "writer_example.json"
 

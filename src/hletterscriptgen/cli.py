@@ -10,7 +10,6 @@ from pathlib import Path
 from hletterscriptgen import LETTER_SET_SCHEMA_ID, __version__
 from hletterscriptgen.validation import validate_path
 
-
 # Exit codes. ``EXIT_NOT_IMPLEMENTED`` follows the sysexits.h convention
 # (``EX_UNAVAILABLE = 69``) to distinguish "feature not built yet" from
 # argparse's usage error (exit code 2).
@@ -42,7 +41,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     validate_p = sub.add_parser(
         "validate",
-        help="Validate a letter_set.v1 JSON document against the bundled schema and cross-field rules.",
+        help="Validate a letter_set.v1 JSON document against schema and cross-field rules.",
     )
     validate_p.add_argument("path", type=Path, help="Path to a JSON letter-set document.")
     validate_p.add_argument(
@@ -122,4 +121,3 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_generate()
 
     parser.error(f"unknown command: {args.command}")
-    return 2  # unreachable: parser.error exits

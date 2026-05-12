@@ -15,7 +15,6 @@ from hletterscriptgen.validation import (
     validate_path,
 )
 
-
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "letter_set" / "writer_example.json"
 
 
