@@ -10,10 +10,14 @@
   },
   "generator": {
     "name": "hletterscriptgen",
-    "version": "0.1.0",
-    "config_hash": "deadbeefcafebabe"
+    "version": "0.1.0.dev0",
+    "config_hash": "0000000000000000000000000000000000000000000000000000000000000000"
   },
   "generated_at": "2026-05-12T00:00:00Z",
+  "upstream": {
+    "repo": "HeOCR/public-domain-hand-written-hebrew-scans",
+    "revision": "0000000000000000000000000000000000000000"
+  },
   "letters": {
     "א": [
       {
@@ -51,7 +55,21 @@
         "source": {
           "scan_entry_id": "example-scan-0001",
           "license": "CC-BY-SA-4.0",
-          "rights_evidence": "Fixture: CC-BY-SA upstream — downstream remixes must honor ShareAlike."
+          "rights_evidence": "Fixture: CC-BY-SA upstream — downstream remixes must honor ShareAlike.",
+          "bbox_in_source": { "x": 220, "y": 340, "width": 72, "height": 84 }
+        }
+      }
+    ],
+    "ך": [
+      {
+        "variant_id": "kaf-final-0001",
+        "asset_path": "letters/kaf-final/kaf-final-0001.png",
+        "checksum_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "image": { "width_px": 80, "height_px": 110, "format": "png" },
+        "source": {
+          "scan_entry_id": "example-scan-0002",
+          "license": "PDM-1.0",
+          "bbox_in_source": { "x": 700, "y": 920, "width": 70, "height": 100 }
         }
       }
     ]
