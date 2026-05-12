@@ -11,6 +11,14 @@ from hletterscriptgen import LETTER_SET_SCHEMA_ID, __version__
 from hletterscriptgen.validation import validate_path
 
 
+# Exit codes. ``EXIT_NOT_IMPLEMENTED`` follows the sysexits.h convention
+# (``EX_UNAVAILABLE = 69``) to distinguish "feature not built yet" from
+# argparse's usage error (exit code 2).
+EXIT_OK = 0
+EXIT_VALIDATION_FAILED = 1
+EXIT_NOT_IMPLEMENTED = 69
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="hletterscriptgen",
@@ -34,7 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     validate_p = sub.add_parser(
         "validate",
-        help="Validate a letter_set.v1 JSON document against the bundled schema.",
+        help="Validate a letter_set.v1 JSON document against the bundled schema and cross-field rules.",
     )
     validate_p.add_argument("path", type=Path, help="Path to a JSON letter-set document.")
     validate_p.add_argument(
@@ -44,19 +52,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format (default: text).",
     )
 
-    gen_p = sub.add_parser(
+    sub.add_parser(
         "generate",
         help="(Not yet implemented) Generate letter sets from upstream scans.",
     )
-    gen_p.add_argument("--input", type=Path, required=False)
-    gen_p.add_argument("--output", type=Path, required=False)
 
     return parser
 
 
 def _cmd_version() -> int:
     print(__version__)
-    return 0
+    return EXIT_OK
 
 
 def _cmd_schema(args: argparse.Namespace) -> int:
@@ -65,7 +71,7 @@ def _cmd_schema(args: argparse.Namespace) -> int:
         sys.stdout.write("\n")
     else:
         print(LETTER_SET_SCHEMA_ID)
-    return 0
+    return EXIT_OK
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
@@ -90,7 +96,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             print(f"FAIL {args.path} ({result.error_count} error(s))")
             for issue in result.issues:
                 print(f"  - {issue.format()}")
-    return 0 if result.ok else 1
+    return EXIT_OK if result.ok else EXIT_VALIDATION_FAILED
 
 
 def _cmd_generate() -> int:
@@ -99,7 +105,7 @@ def _cmd_generate() -> int:
         "See docs/roadmap.md for planned milestones.",
         file=sys.stderr,
     )
-    return 2
+    return EXIT_NOT_IMPLEMENTED
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -116,4 +122,4 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_generate()
 
     parser.error(f"unknown command: {args.command}")
-    return 2  # unreachable, parser.error exits
+    return 2  # unreachable: parser.error exits
