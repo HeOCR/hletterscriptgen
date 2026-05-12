@@ -45,6 +45,7 @@ def test_load_entries_parses_nested_shapes(entries_by_id: dict[str, UpstreamEntr
     assert entry.creators[0].name == "Example Writer"
     assert entry.creators[0].authority_url == "https://example.org/authority/1"
     assert entry.creators[0].death_year is None
+    assert entry.files[0].role == "original"
     assert entry.files[0].sha256 == "0" * 63 + "2"
     assert entry.files[0].width_px == 1200
     assert entry.rights.license_expression == "CC-BY-SA-4.0"

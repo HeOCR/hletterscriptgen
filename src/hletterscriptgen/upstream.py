@@ -84,6 +84,7 @@ class UpstreamCreator:
 
 @dataclass(frozen=True)
 class UpstreamFile:
+    role: str
     local_path: str | None
     sha256: str | None
     mime_type: str | None
@@ -127,6 +128,7 @@ def _parse_creator(raw: dict[str, Any]) -> UpstreamCreator:
 
 def _parse_file(raw: dict[str, Any]) -> UpstreamFile:
     return UpstreamFile(
+        role=raw["role"],
         local_path=raw.get("local_path"),
         sha256=raw.get("sha256"),
         mime_type=raw.get("mime_type"),
