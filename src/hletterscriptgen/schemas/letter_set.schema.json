@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/HeOCR/hletterscriptgen/schemas/letter_set.schema.json",
+  "title": "letter_set.v1",
+  "description": "Per-writer Hebrew letter-glyph image set produced by hletterscriptgen. Each set groups extracted glyphs by writer identity; each Hebrew letter may have multiple variants drawn from different source scans by the same writer. Rights are carried through from the upstream scan corpus per variant.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "writer_id",
+    "generator",
+    "generated_at",
+    "letters",
+    "license_summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "letter_set.v1"
+    },
+    "writer_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable, repo-unique identifier for the writer this set belongs to."
+    },
+    "writer_label": {
+      "type": "string",
+      "description": "Optional human-readable label (e.g. anonymized scribe name or collection-derived label)."
+    },
+    "writer_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_repo", "source_entry_ids"],
+      "properties": {
+        "source_repo": {
+          "type": "string",
+          "description": "Upstream repository identifier, e.g. 'HeOCR/public-domain-hand-written-hebrew-scans'."
+        },
+        "source_entry_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Identifiers of upstream scan entries attributed to this writer."
+        },
+        "attribution_method": {
+          "type": "string",
+          "description": "How writer identity was established (e.g. collection-level metadata, manual review)."
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "const": "hletterscriptgen" },
+        "version": { "type": "string", "minLength": 1 },
+        "config_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8,64}$",
+          "description": "Hash of the generator configuration used for this run."
+        }
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "letters": {
+      "type": "object",
+      "description": "Mapping from a single Hebrew letter character (base or final form) to an array of variant entries.",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[א-ת]$": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/variant" }
+        }
+      }
+    },
+    "license_summary": {
+      "type": "object",
+      "description": "Aggregate rights propagation summary for this letter set. Per-variant license remains authoritative.",
+      "additionalProperties": false,
+      "required": ["licenses"],
+      "properties": {
+        "licenses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/license_id" },
+          "description": "Distinct license identifiers present across all variants in this set."
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "license_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SPDX identifier or LicenseRef-* identifier matching upstream rights records."
+    },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "variant_id",
+        "asset_path",
+        "checksum_sha256",
+        "image",
+        "source"
+      ],
+      "properties": {
+        "variant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "asset_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "POSIX path relative to the letter-set root. Must not contain '..' or start with '/'.",
+          "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
+        },
+        "checksum_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width_px", "height_px", "format"],
+          "properties": {
+            "width_px": { "type": "integer", "minimum": 1 },
+            "height_px": { "type": "integer", "minimum": 1 },
+            "format": {
+              "type": "string",
+              "enum": ["png", "webp", "tiff"]
+            }
+          }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scan_entry_id", "license"],
+          "properties": {
+            "scan_entry_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Identifier of the upstream scan entry from which the glyph was extracted."
+            },
+            "scan_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "license": { "$ref": "#/$defs/license_id" },
+            "rights_evidence": {
+              "type": "string",
+              "description": "Free-form note or URL with rights evidence carried through from upstream."
+            },
+            "bbox_in_source": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["x", "y", "width", "height"],
+              "properties": {
+                "x": { "type": "integer", "minimum": 0 },
+                "y": { "type": "integer", "minimum": 0 },
+                "width": { "type": "integer", "minimum": 1 },
+                "height": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        },
+        "extracted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

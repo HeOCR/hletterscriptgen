@@ -1,0 +1,63 @@
+{
+  "schema_version": "letter_set.v1",
+  "writer_id": "example-writer-0001",
+  "writer_label": "Example Writer (fixture only — not a real person)",
+  "writer_provenance": {
+    "source_repo": "HeOCR/public-domain-hand-written-hebrew-scans",
+    "source_entry_ids": ["example-scan-0001", "example-scan-0002"],
+    "attribution_method": "fixture",
+    "notes": "Fixture document used to validate the letter_set.v1 schema in CI. No real glyph images are referenced."
+  },
+  "generator": {
+    "name": "hletterscriptgen",
+    "version": "0.1.0",
+    "config_hash": "deadbeefcafebabe"
+  },
+  "generated_at": "2026-05-12T00:00:00Z",
+  "letters": {
+    "א": [
+      {
+        "variant_id": "alef-0001",
+        "asset_path": "letters/alef/alef-0001.png",
+        "checksum_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "image": { "width_px": 96, "height_px": 96, "format": "png" },
+        "source": {
+          "scan_entry_id": "example-scan-0001",
+          "scan_url": "https://example.invalid/scans/example-scan-0001",
+          "license": "PDM-1.0",
+          "rights_evidence": "Fixture: rights propagated from upstream entry record.",
+          "bbox_in_source": { "x": 100, "y": 200, "width": 80, "height": 90 }
+        },
+        "extracted_at": "2026-05-12T00:00:00Z"
+      },
+      {
+        "variant_id": "alef-0002",
+        "asset_path": "letters/alef/alef-0002.png",
+        "checksum_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "image": { "width_px": 92, "height_px": 100, "format": "png" },
+        "source": {
+          "scan_entry_id": "example-scan-0002",
+          "license": "PDM-1.0",
+          "bbox_in_source": { "x": 410, "y": 612, "width": 76, "height": 88 }
+        }
+      }
+    ],
+    "ב": [
+      {
+        "variant_id": "bet-0001",
+        "asset_path": "letters/bet/bet-0001.png",
+        "checksum_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "image": { "width_px": 88, "height_px": 90, "format": "png" },
+        "source": {
+          "scan_entry_id": "example-scan-0001",
+          "license": "CC-BY-SA-4.0",
+          "rights_evidence": "Fixture: CC-BY-SA upstream — downstream remixes must honor ShareAlike."
+        }
+      }
+    ]
+  },
+  "license_summary": {
+    "licenses": ["PDM-1.0", "CC-BY-SA-4.0"],
+    "notes": "Fixture mixes a Public Domain Mark variant with a CC-BY-SA variant to exercise the rights-summary surface."
+  }
+}

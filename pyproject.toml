@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hletterscriptgen"
+version = "0.1.0"
+description = "Generates per-writer Hebrew letter-glyph image sets from public-domain handwritten Hebrew scans for the HeOCR project."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "HeOCR" },
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "jsonschema>=4",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+]
+
+[project.urls]
+Homepage = "https://github.com/HeOCR/hletterscriptgen"
+Issues = "https://github.com/HeOCR/hletterscriptgen/issues"
+
+[project.scripts]
+hletterscriptgen = "hletterscriptgen.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hletterscriptgen = [
+  "schemas/*.json",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
