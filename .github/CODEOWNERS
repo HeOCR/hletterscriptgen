@@ -1,0 +1,22 @@
+# Code owners for hletterscriptgen.
+#
+# When an HeOCR maintainer team exists, replace @shaypal5 with the
+# team handle (e.g. @HeOCR/maintainers).
+
+# Default owner — anything not matched by a more specific rule below.
+*                                              @shaypal5
+
+# Schema is the load-bearing public surface — require explicit review.
+/src/hletterscriptgen/schemas/                 @shaypal5
+/examples/letter_set/                          @shaypal5
+/docs/letter_set_v1.md                         @shaypal5
+
+# CI, release infra, and supply chain.
+/.github/workflows/                            @shaypal5
+/.github/CODEOWNERS                            @shaypal5
+/pyproject.toml                                @shaypal5
+
+# Licensing posture.
+/LICENSE                                       @shaypal5
+/LICENSE-POLICY.md                             @shaypal5
+/SECURITY.md                                   @shaypal5

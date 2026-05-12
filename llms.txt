@@ -1,0 +1,32 @@
+# hletterscriptgen — compact repository map
+
+Purpose: generator framework that turns rights-clean handwritten Hebrew
+page scans into per-writer letter-glyph image sets. Code lives here;
+generated datasets land in HeOCR/hletterscript.
+
+Layout:
+- src/hletterscriptgen/         Python package and CLI.
+  - cli.py                      argparse entry point: version | schema | validate | generate.
+  - validation.py               JSON Schema loader + Draft 2020-12 validator helpers.
+  - schemas/letter_set.schema.json   Packaged letter_set.v1 schema.
+- examples/letter_set/          Fixture letter-set documents used by CI to guard the contract.
+- tests/                        pytest suite: schema validity, document validation, CLI smoke.
+- docs/                         Human-readable architecture, contracts, integration notes, roadmap.
+- schemas/                      (none yet — schemas are packaged under src/.../schemas/)
+- .github/workflows/ci.yml      Lint-free CI: pytest + CLI smoke on Ubuntu/macOS, Python 3.11/3.12.
+- .github/workflows/release.yml Tag-triggered build + GitHub release with sdist/wheel.
+
+Stable public surfaces:
+- CLI: hletterscriptgen {version, schema, validate, generate}
+- Output contract: letter_set.v1 (one document per writer)
+- Example fixture: examples/letter_set/writer_example.json
+
+Upstream / downstream:
+- Upstream:   HeOCR/public-domain-hand-written-hebrew-scans (scan-level rights records).
+- Downstream: HeOCR/hletterscript (hosts letter-set datasets) → HeOCR/hocrsyngen → HeOCR/hocrgen → HeOCR / HeOCRsynth.
+
+Out of scope here:
+- Hosting glyph images.
+- Page-scan ingestion / rights curation.
+- Synthetic page composition.
+- Dataset governance, release assembly, or publication.
