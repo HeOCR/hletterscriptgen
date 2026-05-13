@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from hletterscriptgen import LETTER_SET_SCHEMA_ID, __version__
+from hletterscriptgen.upstream import UpstreamLoadError, explain_ineligible, load_entries
 from hletterscriptgen.validation import validate_path
 
 # Exit codes. ``EXIT_NOT_IMPLEMENTED`` follows the sysexits.h convention
@@ -56,6 +57,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="(Not yet implemented) Generate letter sets from upstream scans.",
     )
 
+    eligible_p = sub.add_parser(
+        "check-eligible",
+        help="Check which upstream entries pass the eligibility gate.",
+    )
+    eligible_p.add_argument(
+        "entries_jsonl",
+        type=Path,
+        help="Path to an upstream entries.jsonl file.",
+    )
+    eligible_p.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format (default: text).",
+    )
+
     return parser
 
 
@@ -98,6 +115,48 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return EXIT_OK if result.ok else EXIT_VALIDATION_FAILED
 
 
+def _cmd_check_eligible(args: argparse.Namespace) -> int:
+    path: Path = args.entries_jsonl
+    entry_ids: list[str] = []
+    entry_reasons: list[list[str]] = []
+
+    for entry in load_entries(path):
+        entry_ids.append(entry.entry_id)
+        entry_reasons.append(explain_ineligible(entry))
+
+    total = len(entry_ids)
+    ineligible_count = sum(1 for r in entry_reasons if r)
+    eligible_count = total - ineligible_count
+    ok = ineligible_count == 0
+
+    if args.format == "json":
+        payload: dict[str, object] = {
+            "eligible": eligible_count,
+            "entries": [
+                {"eligible": not reasons, "entry_id": eid, "reasons": reasons}
+                for eid, reasons in zip(entry_ids, entry_reasons, strict=True)
+            ],
+            "ineligible": ineligible_count,
+            "ok": ok,
+            "path": str(path),
+            "total": total,
+        }
+        json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
+        sys.stdout.write("\n")
+    else:
+        for eid, reasons in zip(entry_ids, entry_reasons, strict=True):
+            if not reasons:
+                print(f"PASS {eid}")
+            else:
+                print(f"FAIL {eid}: {'; '.join(reasons)}")
+        if ok:
+            print(f"OK: {total}/{total} entries eligible")
+        else:
+            print(f"FAIL: {ineligible_count}/{total} entries ineligible")
+
+    return EXIT_OK if ok else EXIT_VALIDATION_FAILED
+
+
 def _cmd_generate() -> int:
     print(
         "generate: not yet implemented in this scaffolding release. "
@@ -119,5 +178,11 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_validate(args)
     if args.command == "generate":
         return _cmd_generate()
+    if args.command == "check-eligible":
+        try:
+            return _cmd_check_eligible(args)
+        except UpstreamLoadError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
 
     parser.error(f"unknown command: {args.command}")
