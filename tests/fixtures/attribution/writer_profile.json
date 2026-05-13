@@ -1,0 +1,21 @@
+{
+  "upstream_path": "../public-domain-hand-written-hebrew-scans",
+  "writers": [
+    {
+      "writer_id": "writer_bialik",
+      "attribution_method": "collection_metadata",
+      "entry_ids": [
+        "commons__bialik_letter_safed_1927__p0001",
+        "commons__bialik_letter_safed_1927__p0002"
+      ],
+      "notes": "Chaim Nachman Bialik — attributed via Wikimedia Commons collection metadata"
+    },
+    {
+      "writer_id": "writer_herzl",
+      "attribution_method": "manual_review",
+      "entry_ids": [
+        "commons__herzl_diary_1897__p0001"
+      ]
+    }
+  ]
+}
