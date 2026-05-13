@@ -73,7 +73,7 @@ typed subclasses of `AttributionLoadError`:
 7. `writer_id` values are unique across the file.
 8. Each `entry_id` appears under at most one writer.
 
-`validate_attribution_against_entries(profile, entries)` cross-checks
+`validate_attribution_against_entries(attributions, entries, *, path)` cross-checks
 the attributed entry_ids against a live upstream entry stream and raises
 `AttributionEntryMismatchError` (carrying the full set of unknown ids)
 if any id is not found. The check is strict — unknown ids are almost

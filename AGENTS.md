@@ -34,7 +34,7 @@ hletterscriptgen validate examples/letter_set/writer_example.json --format json
 
 ## Stable public surfaces
 
-- CLI: `hletterscriptgen {version, schema, validate, generate}`.
+- CLI: `hletterscriptgen {version, schema, validate, generate, check-eligible}`.
 - Output contract: `letter_set.v1` (see
   `src/hletterscriptgen/schemas/letter_set.schema.json` and
   `docs/letter_set_v1.md`).
