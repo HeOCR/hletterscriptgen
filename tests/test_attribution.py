@@ -21,7 +21,6 @@ from hletterscriptgen.attribution import (
 )
 from hletterscriptgen.upstream import (
     UpstreamEntry,
-    UpstreamFile,
     UpstreamQuality,
     UpstreamRights,
 )
@@ -36,20 +35,16 @@ PROFILE_PATH = FIXTURE_DIR / "writer_profile.json"
 
 
 def _minimal_entry(entry_id: str) -> UpstreamEntry:
+    """Build the smallest valid UpstreamEntry for a given entry_id.
+
+    Attribution validation only inspects entry_id; all other fields are
+    irrelevant here.
+    """
     return UpstreamEntry(
         entry_id=entry_id,
         source_id="fixture__source",
         creators=(),
-        files=(
-            UpstreamFile(
-                role="original",
-                local_path=None,
-                sha256=None,
-                mime_type=None,
-                width_px=None,
-                height_px=None,
-            ),
-        ),
+        files=(),
         rights=UpstreamRights(
             license_expression="CC0-1.0",
             commercial_use_allowed=True,
@@ -76,7 +71,6 @@ def test_roundtrip_parse_fixture() -> None:
     profile = load_attribution(PROFILE_PATH)
 
     assert isinstance(profile, WriterProfile)
-    assert profile.source_path == PROFILE_PATH
     assert profile.upstream_path == Path("../public-domain-hand-written-hebrew-scans")
 
     writers_by_id = {w.writer_id: w for w in profile.writers}
@@ -98,14 +92,8 @@ def test_roundtrip_parse_fixture() -> None:
     assert herzl.notes is None
 
 
-def test_roundtrip_writers_are_immutable() -> None:
-    profile = load_attribution(PROFILE_PATH)
-    for wa in profile.writers:
-        assert isinstance(wa.entry_ids, frozenset)
-
-
 # ---------------------------------------------------------------------------
-# load_attribution — error cases
+# load_attribution — structural errors
 # ---------------------------------------------------------------------------
 
 
@@ -124,7 +112,9 @@ def test_load_raises_on_non_object_root(tmp_path: Path) -> None:
 
 
 def test_load_raises_on_missing_upstream_path(tmp_path: Path) -> None:
-    p = _write_profile(tmp_path, {"writers": []})
+    p = _write_profile(tmp_path, {"writers": [
+        {"writer_id": "w", "attribution_method": "manual_review", "entry_ids": ["e"]}
+    ]})
     with pytest.raises(AttributionLoadError):
         load_attribution(p)
 
@@ -133,6 +123,54 @@ def test_load_raises_on_non_list_writers(tmp_path: Path) -> None:
     p = _write_profile(tmp_path, {"upstream_path": "/some/path", "writers": "oops"})
     with pytest.raises(AttributionLoadError):
         load_attribution(p)
+
+
+def test_load_raises_on_empty_writers_list(tmp_path: Path) -> None:
+    p = _write_profile(tmp_path, {"upstream_path": "/some/path", "writers": []})
+    with pytest.raises(AttributionLoadError) as excinfo:
+        load_attribution(p)
+    assert "empty" in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# load_attribution — writer_id validation
+# ---------------------------------------------------------------------------
+
+
+def test_load_raises_missing_writer_id(tmp_path: Path) -> None:
+    data = {
+        "upstream_path": "/some/path",
+        "writers": [{"attribution_method": "manual_review", "entry_ids": ["e__001"]}],
+    }
+    p = _write_profile(tmp_path, data)
+    with pytest.raises(AttributionLoadError):
+        load_attribution(p)
+
+
+def test_load_raises_non_string_writer_id(tmp_path: Path) -> None:
+    data = {
+        "upstream_path": "/some/path",
+        "writers": [
+            {"writer_id": 42, "attribution_method": "manual_review", "entry_ids": ["e__001"]}
+        ],
+    }
+    p = _write_profile(tmp_path, data)
+    with pytest.raises(AttributionLoadError) as excinfo:
+        load_attribution(p)
+    assert "string" in str(excinfo.value)
+
+
+def test_load_raises_blank_writer_id(tmp_path: Path) -> None:
+    data = {
+        "upstream_path": "/some/path",
+        "writers": [
+            {"writer_id": "   ", "attribution_method": "manual_review", "entry_ids": ["e__001"]}
+        ],
+    }
+    p = _write_profile(tmp_path, data)
+    with pytest.raises(AttributionLoadError) as excinfo:
+        load_attribution(p)
+    assert "blank" in str(excinfo.value)
 
 
 def test_load_raises_duplicate_writer_id(tmp_path: Path) -> None:
@@ -158,62 +196,21 @@ def test_load_raises_duplicate_writer_id(tmp_path: Path) -> None:
     assert excinfo.value.path == p
 
 
-def test_load_raises_duplicate_entry_id_across_writers(tmp_path: Path) -> None:
+# ---------------------------------------------------------------------------
+# load_attribution — attribution_method validation
+# ---------------------------------------------------------------------------
+
+
+def test_load_raises_missing_attribution_method(tmp_path: Path) -> None:
     data = {
         "upstream_path": "/some/path",
-        "writers": [
-            {
-                "writer_id": "writer_a",
-                "attribution_method": "manual_review",
-                "entry_ids": ["shared__entry__p0001"],
-            },
-            {
-                "writer_id": "writer_b",
-                "attribution_method": "manual_review",
-                "entry_ids": ["shared__entry__p0001"],
-            },
-        ],
+        "writers": [{"writer_id": "writer_a", "entry_ids": ["e__001"]}],
     }
     p = _write_profile(tmp_path, data)
-    with pytest.raises(DuplicateEntryIdError) as excinfo:
+    with pytest.raises(AttributionLoadError) as excinfo:
         load_attribution(p)
-    assert excinfo.value.entry_id == "shared__entry__p0001"
-    assert set([excinfo.value.first_writer, excinfo.value.second_writer]) == {
-        "writer_a",
-        "writer_b",
-    }
-
-
-def test_load_raises_empty_entry_ids(tmp_path: Path) -> None:
-    data = {
-        "upstream_path": "/some/path",
-        "writers": [
-            {
-                "writer_id": "writer_a",
-                "attribution_method": "manual_review",
-                "entry_ids": [],
-            }
-        ],
-    }
-    p = _write_profile(tmp_path, data)
-    with pytest.raises(EmptyEntryIdsError) as excinfo:
-        load_attribution(p)
-    assert excinfo.value.writer_id == "writer_a"
-
-
-def test_load_raises_missing_entry_ids_key(tmp_path: Path) -> None:
-    data = {
-        "upstream_path": "/some/path",
-        "writers": [
-            {
-                "writer_id": "writer_a",
-                "attribution_method": "manual_review",
-            }
-        ],
-    }
-    p = _write_profile(tmp_path, data)
-    with pytest.raises(EmptyEntryIdsError):
-        load_attribution(p)
+    assert "missing required field" in str(excinfo.value)
+    assert "attribution_method" in str(excinfo.value)
 
 
 def test_load_raises_unknown_attribution_method(tmp_path: Path) -> None:
@@ -234,19 +231,112 @@ def test_load_raises_unknown_attribution_method(tmp_path: Path) -> None:
     assert excinfo.value.value == "psychic_vibes"
 
 
-def test_load_raises_missing_writer_id(tmp_path: Path) -> None:
+# ---------------------------------------------------------------------------
+# load_attribution — entry_ids validation
+# ---------------------------------------------------------------------------
+
+
+def test_load_raises_empty_entry_ids(tmp_path: Path) -> None:
+    data = {
+        "upstream_path": "/some/path",
+        "writers": [
+            {"writer_id": "writer_a", "attribution_method": "manual_review", "entry_ids": []}
+        ],
+    }
+    p = _write_profile(tmp_path, data)
+    with pytest.raises(EmptyEntryIdsError) as excinfo:
+        load_attribution(p)
+    assert excinfo.value.writer_id == "writer_a"
+
+
+def test_load_raises_missing_entry_ids_key(tmp_path: Path) -> None:
+    data = {
+        "upstream_path": "/some/path",
+        "writers": [{"writer_id": "writer_a", "attribution_method": "manual_review"}],
+    }
+    p = _write_profile(tmp_path, data)
+    with pytest.raises(EmptyEntryIdsError):
+        load_attribution(p)
+
+
+def test_load_raises_non_list_entry_ids(tmp_path: Path) -> None:
+    data = {
+        "upstream_path": "/some/path",
+        "writers": [
+            {"writer_id": "writer_a", "attribution_method": "manual_review", "entry_ids": "oops"}
+        ],
+    }
+    p = _write_profile(tmp_path, data)
+    with pytest.raises(AttributionLoadError) as excinfo:
+        load_attribution(p)
+    # must not be EmptyEntryIdsError — a type mismatch is a different problem
+    assert not isinstance(excinfo.value, EmptyEntryIdsError)
+    assert "list" in str(excinfo.value)
+
+
+def test_load_raises_non_string_entry_id_element(tmp_path: Path) -> None:
     data = {
         "upstream_path": "/some/path",
         "writers": [
             {
+                "writer_id": "writer_a",
                 "attribution_method": "manual_review",
-                "entry_ids": ["entry__001"],
+                "entry_ids": ["valid__entry", None, 42],
             }
         ],
     }
     p = _write_profile(tmp_path, data)
-    with pytest.raises(AttributionLoadError):
+    with pytest.raises(AttributionLoadError) as excinfo:
         load_attribution(p)
+    assert "entry_ids[1]" in str(excinfo.value)
+
+
+def test_load_raises_duplicate_entry_id_across_writers(tmp_path: Path) -> None:
+    data = {
+        "upstream_path": "/some/path",
+        "writers": [
+            {
+                "writer_id": "writer_a",
+                "attribution_method": "manual_review",
+                "entry_ids": ["shared__entry__p0001"],
+            },
+            {
+                "writer_id": "writer_b",
+                "attribution_method": "manual_review",
+                "entry_ids": ["shared__entry__p0001"],
+            },
+        ],
+    }
+    p = _write_profile(tmp_path, data)
+    with pytest.raises(DuplicateEntryIdError) as excinfo:
+        load_attribution(p)
+    assert excinfo.value.entry_id == "shared__entry__p0001"
+    assert excinfo.value.first_writer == "writer_a"
+    assert excinfo.value.second_writer == "writer_b"
+
+
+# ---------------------------------------------------------------------------
+# load_attribution — notes validation
+# ---------------------------------------------------------------------------
+
+
+def test_load_raises_non_string_notes(tmp_path: Path) -> None:
+    data = {
+        "upstream_path": "/some/path",
+        "writers": [
+            {
+                "writer_id": "writer_a",
+                "attribution_method": "manual_review",
+                "entry_ids": ["entry__001"],
+                "notes": 99,
+            }
+        ],
+    }
+    p = _write_profile(tmp_path, data)
+    with pytest.raises(AttributionLoadError) as excinfo:
+        load_attribution(p)
+    assert "notes" in str(excinfo.value)
+    assert "string" in str(excinfo.value)
 
 
 # ---------------------------------------------------------------------------
@@ -254,25 +344,25 @@ def test_load_raises_missing_writer_id(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_validate_passes_when_all_ids_known(tmp_path: Path) -> None:
+def test_validate_passes_when_all_ids_known() -> None:
     profile = load_attribution(PROFILE_PATH)
     entries = [
         _minimal_entry("commons__bialik_letter_safed_1927__p0001"),
         _minimal_entry("commons__bialik_letter_safed_1927__p0002"),
         _minimal_entry("commons__herzl_diary_1897__p0001"),
     ]
-    validate_attribution_against_entries(profile, entries)  # must not raise
+    validate_attribution_against_entries(profile.writers, entries, path=PROFILE_PATH)
 
 
-def test_validate_passes_with_extra_upstream_entries(tmp_path: Path) -> None:
+def test_validate_passes_with_extra_upstream_entries() -> None:
     profile = load_attribution(PROFILE_PATH)
     entries = [
         _minimal_entry("commons__bialik_letter_safed_1927__p0001"),
         _minimal_entry("commons__bialik_letter_safed_1927__p0002"),
         _minimal_entry("commons__herzl_diary_1897__p0001"),
-        _minimal_entry("commons__extra_entry__p0001"),  # not attributed, that's fine
+        _minimal_entry("commons__extra_entry__p0001"),  # not attributed — fine
     ]
-    validate_attribution_against_entries(profile, entries)  # must not raise
+    validate_attribution_against_entries(profile.writers, entries, path=PROFILE_PATH)
 
 
 def test_validate_raises_on_unknown_entry_id(tmp_path: Path) -> None:
@@ -290,7 +380,7 @@ def test_validate_raises_on_unknown_entry_id(tmp_path: Path) -> None:
     profile = load_attribution(p)
     entries = [_minimal_entry("known__entry__p0001")]
     with pytest.raises(AttributionEntryMismatchError) as excinfo:
-        validate_attribution_against_entries(profile, entries)
+        validate_attribution_against_entries(profile.writers, entries, path=p)
     assert "ghost__entry__p0001" in excinfo.value.unknown_ids
     assert excinfo.value.path == p
 
@@ -309,7 +399,20 @@ def test_validate_reports_all_unknown_ids(tmp_path: Path) -> None:
     p = _write_profile(tmp_path, data)
     profile = load_attribution(p)
     with pytest.raises(AttributionEntryMismatchError) as excinfo:
-        validate_attribution_against_entries(profile, [])
-    assert excinfo.value.unknown_ids == frozenset(
-        {"ghost__a__p0001", "ghost__b__p0001"}
-    )
+        validate_attribution_against_entries(profile.writers, [], path=p)
+    assert excinfo.value.unknown_ids == frozenset({"ghost__a__p0001", "ghost__b__p0001"})
+
+
+def test_validate_mismatch_error_is_not_a_load_error(tmp_path: Path) -> None:
+    """AttributionEntryMismatchError must not be a subtype of AttributionLoadError."""
+    data = {
+        "upstream_path": "/some/path",
+        "writers": [
+            {"writer_id": "w", "attribution_method": "manual_review", "entry_ids": ["ghost"]}
+        ],
+    }
+    p = _write_profile(tmp_path, data)
+    profile = load_attribution(p)
+    with pytest.raises(AttributionEntryMismatchError) as excinfo:
+        validate_attribution_against_entries(profile.writers, [], path=p)
+    assert not isinstance(excinfo.value, AttributionLoadError)

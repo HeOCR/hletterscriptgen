@@ -9,7 +9,7 @@ The module exposes:
 * :class:`AttributionMethod` — enum of recognised attribution methods.
 * :class:`WriterAttribution` — typed record for a single writer's config.
 * :class:`WriterProfile` — the top-level config object (upstream path +
-  writers tuple + the path the profile was loaded from).
+  writers tuple).
 * :func:`load_attribution` — read and validate a writer-profile JSON file.
 * :func:`validate_attribution_against_entries` — cross-check entry_ids
   against a live upstream entry stream; raises on unknown ids.
@@ -42,15 +42,19 @@ class AttributionMethod(StrEnum):
 # ---------------------------------------------------------------------------
 
 
-class AttributionLoadError(ValueError):
-    """Base for all writer-profile load failures.
+class AttributionError(ValueError):
+    """Base for all attribution errors.
 
-    ``path`` refers to the writer-profile JSON file that triggered the error.
+    ``path`` refers to the writer-profile JSON file associated with the error.
     """
 
     def __init__(self, message: str, *, path: Path) -> None:
         super().__init__(f"{path}: {message}")
         self.path = path
+
+
+class AttributionLoadError(AttributionError):
+    """Raised when a writer-profile file cannot be parsed or is structurally invalid."""
 
 
 class DuplicateWriterIdError(AttributionLoadError):
@@ -83,7 +87,7 @@ class DuplicateEntryIdError(AttributionLoadError):
 
 
 class EmptyEntryIdsError(AttributionLoadError):
-    """Raised when a writer's ``entry_ids`` list is empty."""
+    """Raised when a writer's ``entry_ids`` list is absent or empty."""
 
     def __init__(self, writer_id: str, *, path: Path) -> None:
         super().__init__(f"writer {writer_id!r} has no entry_ids", path=path)
@@ -104,8 +108,13 @@ class UnknownAttributionMethodError(AttributionLoadError):
         self.value = value
 
 
-class AttributionEntryMismatchError(AttributionLoadError):
-    """Raised when attributed entry_ids are absent from the upstream entry stream."""
+class AttributionEntryMismatchError(AttributionError):
+    """Raised when attributed entry_ids are absent from the upstream entry stream.
+
+    This is a cross-check error distinct from :class:`AttributionLoadError`:
+    the profile itself is structurally valid, but it references upstream
+    entry_ids that do not exist in the provided entries stream.
+    """
 
     def __init__(self, unknown_ids: frozenset[str], *, path: Path) -> None:
         ids_str = ", ".join(sorted(unknown_ids))
@@ -137,7 +146,6 @@ class WriterProfile:
 
     upstream_path: Path
     writers: tuple[WriterAttribution, ...]
-    source_path: Path
 
 
 # ---------------------------------------------------------------------------
@@ -146,14 +154,27 @@ class WriterProfile:
 
 
 def _parse_writer(raw: dict[str, Any], *, path: Path) -> WriterAttribution:
-    try:
-        writer_id: str = raw["writer_id"]
-    except KeyError as exc:
+    # writer_id ---------------------------------------------------------------
+    if "writer_id" not in raw:
         raise AttributionLoadError(
             "writer entry is missing required field 'writer_id'", path=path
-        ) from exc
+        )
+    writer_id = raw["writer_id"]
+    if not isinstance(writer_id, str):
+        raise AttributionLoadError(
+            f"'writer_id' must be a string, got {type(writer_id).__name__}",
+            path=path,
+        )
+    if not writer_id.strip():
+        raise AttributionLoadError("writer entry has a blank 'writer_id'", path=path)
 
-    raw_method = raw.get("attribution_method")
+    # attribution_method ------------------------------------------------------
+    if "attribution_method" not in raw:
+        raise AttributionLoadError(
+            f"writer {writer_id!r}: missing required field 'attribution_method'",
+            path=path,
+        )
+    raw_method = raw["attribution_method"]
     if not isinstance(raw_method, str):
         raise AttributionLoadError(
             f"writer {writer_id!r}: 'attribution_method' must be a string",
@@ -164,15 +185,40 @@ def _parse_writer(raw: dict[str, Any], *, path: Path) -> WriterAttribution:
     except ValueError as exc:
         raise UnknownAttributionMethodError(writer_id, raw_method, path=path) from exc
 
-    raw_ids = raw.get("entry_ids", [])
-    if not isinstance(raw_ids, list) or not raw_ids:
+    # entry_ids ---------------------------------------------------------------
+    if "entry_ids" not in raw:
         raise EmptyEntryIdsError(writer_id, path=path)
+    raw_ids = raw["entry_ids"]
+    if not isinstance(raw_ids, list):
+        raise AttributionLoadError(
+            f"writer {writer_id!r}: 'entry_ids' must be a list,"
+            f" got {type(raw_ids).__name__}",
+            path=path,
+        )
+    if not raw_ids:
+        raise EmptyEntryIdsError(writer_id, path=path)
+    for i, eid in enumerate(raw_ids):
+        if not isinstance(eid, str):
+            raise AttributionLoadError(
+                f"writer {writer_id!r}: entry_ids[{i}] must be a string,"
+                f" got {type(eid).__name__}",
+                path=path,
+            )
+
+    # notes (optional) --------------------------------------------------------
+    notes = raw.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        raise AttributionLoadError(
+            f"writer {writer_id!r}: 'notes' must be a string if present,"
+            f" got {type(notes).__name__}",
+            path=path,
+        )
 
     return WriterAttribution(
         writer_id=writer_id,
         attribution_method=method,
         entry_ids=frozenset(raw_ids),
-        notes=raw.get("notes"),
+        notes=notes,
     )
 
 
@@ -190,9 +236,11 @@ def load_attribution(path: Path) -> WriterProfile:
 
     * the file is not valid JSON or is not a top-level object,
     * ``upstream_path`` is missing or not a string,
-    * ``writers`` is missing or not a list,
-    * any writer entry is malformed (missing ``writer_id``, bad
-      ``attribution_method``, empty ``entry_ids``),
+    * ``writers`` is missing, not a list, or empty,
+    * any writer entry is malformed (missing or blank ``writer_id``,
+      missing or unknown ``attribution_method``, absent or empty or
+      non-list ``entry_ids``, non-string element in ``entry_ids``,
+      non-string ``notes``),
     * the same ``writer_id`` appears more than once, or
     * the same ``entry_id`` appears under two different writers.
     """
@@ -243,38 +291,46 @@ def load_attribution(path: Path) -> WriterProfile:
 
         writers.append(wa)
 
+    if not writers:
+        raise AttributionLoadError("'writers' list must not be empty", path=path)
+
     return WriterProfile(
         upstream_path=Path(raw_upstream),
         writers=tuple(writers),
-        source_path=path,
     )
 
 
 def validate_attribution_against_entries(
-    profile: WriterProfile,
+    attributions: Iterable[WriterAttribution],
     entries: Iterable[UpstreamEntry],
+    *,
+    path: Path,
 ) -> None:
     """Raise if any attributed entry_id is absent from ``entries``.
 
     Cross-checks every ``entry_id`` declared across all writers in
-    ``profile`` against the provided upstream entries. Raises
+    ``attributions`` against the provided upstream entries. Raises
     :class:`AttributionEntryMismatchError` (carrying the full set of
     unknown ids) if any id is not found.
+
+    ``path`` is used as context in the raised error — pass the path of
+    the writer-profile file the attributions were loaded from.
 
     Consuming the ``entries`` iterable is the caller's responsibility —
     pass an in-memory list when re-use is needed.
     """
     known_ids: frozenset[str] = frozenset(e.entry_id for e in entries)
     attributed_ids: frozenset[str] = frozenset(
-        eid for wa in profile.writers for eid in wa.entry_ids
+        eid for wa in attributions for eid in wa.entry_ids
     )
     unknown = attributed_ids - known_ids
     if unknown:
-        raise AttributionEntryMismatchError(unknown, path=profile.source_path)
+        raise AttributionEntryMismatchError(unknown, path=path)
 
 
 __all__ = [
     "AttributionEntryMismatchError",
+    "AttributionError",
     "AttributionLoadError",
     "AttributionMethod",
     "DuplicateEntryIdError",
