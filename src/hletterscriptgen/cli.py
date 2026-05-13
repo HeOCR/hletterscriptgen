@@ -16,6 +16,7 @@ from hletterscriptgen.validation import validate_path
 # argparse's usage error (exit code 2).
 EXIT_OK = 0
 EXIT_VALIDATION_FAILED = 1
+EXIT_INPUT_ERROR = 2  # mirrors argparse's convention for usage/input errors
 EXIT_NOT_IMPLEMENTED = 69
 
 
@@ -117,34 +118,36 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 def _cmd_check_eligible(args: argparse.Namespace) -> int:
     path: Path = args.entries_jsonl
-    entry_ids: list[str] = []
-    entry_reasons: list[list[str]] = []
+    try:
+        results = [
+            (entry.entry_id, explain_ineligible(entry))
+            for entry in load_entries(path)
+        ]
+    except UpstreamLoadError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INPUT_ERROR
 
-    for entry in load_entries(path):
-        entry_ids.append(entry.entry_id)
-        entry_reasons.append(explain_ineligible(entry))
-
-    total = len(entry_ids)
-    ineligible_count = sum(1 for r in entry_reasons if r)
+    total = len(results)
+    ineligible_count = sum(1 for _, reasons in results if reasons)
     eligible_count = total - ineligible_count
     ok = ineligible_count == 0
 
     if args.format == "json":
-        payload: dict[str, object] = {
-            "eligible": eligible_count,
-            "entries": [
-                {"eligible": not reasons, "entry_id": eid, "reasons": reasons}
-                for eid, reasons in zip(entry_ids, entry_reasons, strict=True)
-            ],
-            "ineligible": ineligible_count,
+        payload = {
             "ok": ok,
             "path": str(path),
             "total": total,
+            "eligible": eligible_count,
+            "ineligible": ineligible_count,
+            "entries": [
+                {"entry_id": eid, "eligible": not reasons, "reasons": reasons}
+                for eid, reasons in results
+            ],
         }
-        json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(payload, sys.stdout, ensure_ascii=False, indent=2)
         sys.stdout.write("\n")
     else:
-        for eid, reasons in zip(entry_ids, entry_reasons, strict=True):
+        for eid, reasons in results:
             if not reasons:
                 print(f"PASS {eid}")
             else:
@@ -179,10 +182,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "generate":
         return _cmd_generate()
     if args.command == "check-eligible":
-        try:
-            return _cmd_check_eligible(args)
-        except UpstreamLoadError as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
+        return _cmd_check_eligible(args)
 
     parser.error(f"unknown command: {args.command}")
