@@ -34,8 +34,11 @@ lint = [
 typecheck = [
   "mypy>=1.10",
 ]
+cv = [
+  "opencv-python-headless>=4.9",
+]
 dev = [
-  "hletterscriptgen[test,lint,typecheck]",
+  "hletterscriptgen[test,lint,typecheck,cv]",
 ]
 
 [project.urls]

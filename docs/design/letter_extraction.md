@@ -1,8 +1,11 @@
 # Letter extraction pipeline — DRAFT design
 
-> **Status: DRAFT.** Nothing here is implemented; the `generate` CLI
-> exits with `EX_UNAVAILABLE` (`69`). Treat this as a sketch to be
-> challenged in M3 (see [`../roadmap.md`](../roadmap.md)).
+> **Status: DRAFT — segmentation approach resolved.**  The `generate` CLI still exits with
+> `EX_UNAVAILABLE` (`69`); extraction is not yet implemented.  The open question about *how*
+> glyphs are segmented has been answered in
+> [`segmentation-approach.md`](segmentation-approach.md): connected-component analysis via
+> `opencv-python-headless` (Option A), chosen because the upstream corpus ships no annotation
+> sidecars.  See [`../roadmap.md`](../roadmap.md) for the full M3 scope.
 
 ## Goal
 
@@ -34,15 +37,16 @@ Turn rights-clean handwritten Hebrew page scans (upstream:
    `HeOCR/hletterscript`. The exact handoff format is also a draft —
    see [`../downstream_handoff.md`](../downstream_handoff.md).
 
-## Open questions
+## Design decisions (closed in issue #16)
 
-- How is writer identity established when upstream metadata is silent?
-  Manual review only, or some lightweight clustering signal?
-- What's the right per-variant quality floor (resolution, contrast)
-  before we accept a glyph?
-- Do near-duplicate variants within a single writer's set get deduped
-  here, or carried through with a `near_duplicate_of` reference for
-  downstream consumers to decide?
+The three open questions from the original draft were resolved in issue #16 before M3 coding began:
 
-These are the questions M3+ work needs to answer before this pipeline
-turns from a sketch into code.
+- **Writer identity when upstream metadata is silent** → manual-review-only for M3; the
+  generator consumes a `WriterProfile`, never infers identity (decision D1).
+- **Per-variant quality floor** → bounding box ≥ `MIN_GLYPH_PX` (16 × 16 px), named constant;
+  no contrast or sharpness metrics until M4 (decision D2).
+- **Near-duplicate variants** → emit all; deduplication is M4 (decision D3).
+
+**Segmentation approach** → connected-component analysis (`opencv-python-headless`); see
+[`segmentation-approach.md`](segmentation-approach.md) for the full decision record and
+open questions deferred to sub-PR 2.
