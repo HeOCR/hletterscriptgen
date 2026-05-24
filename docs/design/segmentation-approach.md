@@ -8,9 +8,12 @@
 The upstream corpus ships **no annotation sidecars of any kind** for any current entry.
 Option B (pre-annotated bounding boxes) is therefore unavailable, and Option A
 (connected-component analysis with OpenCV) is selected as the M3 segmentation approach.
-Option C (pre-trained segmentation model) is deferred indefinitely; it is heavier and less
-deterministic than CCA, and adds nothing when the corpus lacks ground-truth labels for
-training or evaluation.
+Option C (pre-trained segmentation model) is deferred for M3; it adds nothing when the corpus
+lacks annotation sidecars.  The post-M3 picture has changed: Hebrew-specific, pre-trained
+Kraken models now exist (MiDRASH Project, Princeton Geniza Project HTR4PGP) that can produce
+ALTO/PAGE-XML annotations over the existing corpus today — no new training data required.  See
+[`../htr_tooling.md`](../htr_tooling.md) for a full survey of available tools and the upgrade
+path from Option A to Option B/C.
 
 ---
 
@@ -74,9 +77,11 @@ so callers that only consume schema/validation code do not pull in the CV stack.
 | **Margin noise** | Stamps, ruled lines, bleed-through from verso can produce large foreground blobs | Mitigated by upper-area ceiling filter |
 
 These failure modes are acceptable for M3 (an MVP extraction, not a quality-filtered set).
-M4 deduplication will absorb some touching-letter artefacts. A more robust segmenter
-(e.g. a line-level projection-profile split before CCA, or a pre-trained model) can be
-introduced post-M3 without changing the output schema.
+M4 deduplication will absorb some touching-letter artefacts.  A more robust segmenter can be
+introduced post-M3 without changing the output schema: options include a line-level
+projection-profile split before CCA, or consuming pre-trained Hebrew-specific models
+(Kraken + MiDRASH / HTR4PGP, Eynollah, dhSegment) via upstream ALTO/PAGE-XML sidecars.
+See [`../htr_tooling.md`](../htr_tooling.md) for the full landscape.
 
 ---
 
