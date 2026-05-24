@@ -53,9 +53,34 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format (default: text).",
     )
 
-    sub.add_parser(
+    generate_p = sub.add_parser(
         "generate",
-        help="(Not yet implemented) Generate letter sets from upstream scans.",
+        help="Generate letter sets from upstream scans using a generation profile.",
+    )
+    generate_p.add_argument(
+        "--profile",
+        type=Path,
+        required=True,
+        metavar="PROFILE",
+        help="Path to a generation profile JSON file.",
+    )
+    generate_p.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        metavar="DIR",
+        help="Output directory (created if absent).",
+    )
+    generate_p.add_argument(
+        "--generated-at",
+        type=str,
+        default=None,
+        metavar="ISO8601",
+        help=(
+            "Override the generated_at timestamp in output documents "
+            "(ISO 8601 format, e.g. '2025-01-01T00:00:00+00:00'). "
+            "Useful for deterministic / reproducible builds."
+        ),
     )
 
     eligible_p = sub.add_parser(
@@ -72,6 +97,39 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("text", "json"),
         default="text",
         help="Output format (default: text).",
+    )
+
+    scan_blobs_p = sub.add_parser(
+        "scan-blobs",
+        help=(
+            "Detect glyph blobs in a scan image via CCA. "
+            "Use the output to populate a generation profile."
+        ),
+    )
+    scan_blobs_p.add_argument(
+        "image",
+        type=Path,
+        help="Path to the scan image (JPEG, PNG, TIFF, …).",
+    )
+    scan_blobs_p.add_argument(
+        "--min-dim",
+        type=int,
+        default=16,
+        metavar="PX",
+        help="Minimum blob dimension in pixels (default: 16).",
+    )
+    scan_blobs_p.add_argument(
+        "--max-area",
+        type=int,
+        default=None,
+        metavar="PX2",
+        help="Maximum blob area in pixels (default: 10%% of image area).",
+    )
+    scan_blobs_p.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="json",
+        help="Output format (default: json).",
     )
 
     return parser
@@ -160,13 +218,61 @@ def _cmd_check_eligible(args: argparse.Namespace) -> int:
     return EXIT_OK if ok else EXIT_VALIDATION_FAILED
 
 
-def _cmd_generate() -> int:
-    print(
-        "generate: not yet implemented in this scaffolding release. "
-        "See docs/roadmap.md for planned milestones.",
-        file=sys.stderr,
-    )
-    return EXIT_NOT_IMPLEMENTED
+def _cmd_generate(args: argparse.Namespace) -> int:
+    from hletterscriptgen.generate_profile import GenerateProfileError, load_generate_profile
+    from hletterscriptgen.generator import GeneratorError, generate
+
+    try:
+        profile = load_generate_profile(args.profile)
+    except GenerateProfileError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INPUT_ERROR
+
+    try:
+        output_paths = generate(
+            profile,
+            args.output,
+            generated_at=args.generated_at,
+        )
+    except GeneratorError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INPUT_ERROR
+
+    for p in output_paths:
+        print(f"OK {p}")
+    return EXIT_OK
+
+
+def _cmd_scan_blobs(args: argparse.Namespace) -> int:
+    from hletterscriptgen.extractor import ExtractionError, extract_glyphs
+
+    try:
+        glyphs = extract_glyphs(
+            args.image,
+            min_dimension=args.min_dim,
+            max_area=args.max_area,
+        )
+    except ExtractionError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INPUT_ERROR
+
+    if args.format == "json":
+        payload = {
+            "image": str(args.image),
+            "count": len(glyphs),
+            "blobs": [
+                {"x": g.x, "y": g.y, "width": g.width, "height": g.height}
+                for g in glyphs
+            ],
+        }
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        for i, g in enumerate(glyphs):
+            print(f"blob {i:4d}: x={g.x:5d} y={g.y:5d} w={g.width:5d} h={g.height:5d}")
+        print(f"{len(glyphs)} blob(s) detected in {args.image}")
+
+    return EXIT_OK
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -180,8 +286,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validate":
         return _cmd_validate(args)
     if args.command == "generate":
-        return _cmd_generate()
+        return _cmd_generate(args)
     if args.command == "check-eligible":
         return _cmd_check_eligible(args)
+    if args.command == "scan-blobs":
+        return _cmd_scan_blobs(args)
 
     parser.error(f"unknown command: {args.command}")

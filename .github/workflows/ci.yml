@@ -86,7 +86,7 @@ jobs:
       - name: Install package
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install -e ".[test]"
+          python -m pip install -e ".[test,cv]"
 
       - name: Run tests
         run: python -m pytest
@@ -99,6 +99,16 @@ jobs:
 
       - name: CLI smoke — validate example
         run: hletterscriptgen validate examples/letter_set/writer_example.json --format json
+
+      - name: CLI smoke — scan-blobs
+        run: |
+          python -c "
+          import cv2, numpy as np
+          img = np.full((100, 100, 3), 255, dtype=np.uint8)
+          img[10:30, 10:30] = 0
+          cv2.imwrite('/tmp/smoke_scan.png', img)
+          "
+          hletterscriptgen scan-blobs /tmp/smoke_scan.png --format json
 
   package:
     name: Build distributions
