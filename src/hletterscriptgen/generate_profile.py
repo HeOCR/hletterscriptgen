@@ -43,11 +43,12 @@ The module exposes:
 * :class:`GlyphAnnotation` — a single bbox + letter label.
 * :class:`ScanAnnotation` — all annotated glyphs for one upstream scan.
 * :class:`WriterAnnotation` — all annotated scans for one writer.
-* :class:`GenerateProfile` — top-level config object.
+* :class:`GenerateProfile` — top-level config object (includes pre-computed
+  ``config_hash`` for embedding in output documents).
 * :class:`GenerateProfileError` — base error class.
 * :func:`load_generate_profile` — read, validate, and return a
-  ``(GenerateProfile, raw_dict)`` pair; the raw dict is suitable for
-  passing to :func:`hletterscriptgen.hashing.config_hash`.
+  :class:`GenerateProfile`; the profile's ``config_hash`` field is computed
+  from the raw JSON at load time.
 """
 
 from __future__ import annotations
@@ -58,7 +59,9 @@ from pathlib import Path
 from typing import Any
 
 from hletterscriptgen import HEBREW_LETTERS
-
+from hletterscriptgen.hashing import (
+    config_hash as _compute_config_hash,
+)
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -134,10 +137,15 @@ class GenerateProfile:
     ``upstream_checkout`` is the path to the local upstream repo checkout
     (used for both pinning the revision and resolving scan file paths).
     ``writers`` is a non-empty tuple of :class:`WriterAnnotation` records.
+    ``config_hash`` is the SHA-256 hex digest of the canonical-JSON serialisation
+    of the raw profile dict, computed at load time by :func:`load_generate_profile`.
+    It is embedded in the ``generator.config_hash`` field of output documents so
+    that the profile version that produced a dataset can be reconstructed.
     """
 
     upstream_checkout: Path
     writers: tuple[WriterAnnotation, ...]
+    config_hash: str
 
 
 # ---------------------------------------------------------------------------
@@ -264,13 +272,14 @@ def _parse_writer(raw: Any, index: int, *, path: Path) -> WriterAnnotation:
 # ---------------------------------------------------------------------------
 
 
-def load_generate_profile(path: Path) -> tuple[GenerateProfile, dict[str, Any]]:
+def load_generate_profile(path: Path) -> GenerateProfile:
     """Read and validate a generation profile JSON file.
 
-    Returns ``(profile, raw_dict)`` where ``raw_dict`` is the original
-    parsed JSON object — pass it to
-    :func:`hletterscriptgen.hashing.config_hash` to compute
-    ``generator.config_hash`` for the output ``letter_set.v1`` document.
+    Returns a :class:`GenerateProfile` whose ``config_hash`` field contains
+    the SHA-256 hex digest of the canonical-JSON serialisation of the raw
+    profile dict.  That hash is embedded in the ``generator.config_hash``
+    field of output ``letter_set.v1`` documents so that the profile version
+    that produced a dataset can be reconstructed.
 
     Raises :class:`GenerateProfileError` when the file is missing, not
     valid JSON, or structurally invalid.  Raises :class:`OSError` for
@@ -324,11 +333,11 @@ def load_generate_profile(path: Path) -> tuple[GenerateProfile, dict[str, Any]]:
     # Resolve upstream_checkout relative to the profile file's parent dir.
     checkout_path = (path.parent / raw_checkout).resolve()
 
-    profile = GenerateProfile(
+    return GenerateProfile(
         upstream_checkout=checkout_path,
         writers=writers,
+        config_hash=_compute_config_hash(raw),
     )
-    return profile, raw
 
 
 __all__ = [

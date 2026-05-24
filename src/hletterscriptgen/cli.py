@@ -223,7 +223,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     from hletterscriptgen.generator import GeneratorError, generate
 
     try:
-        profile, raw = load_generate_profile(args.profile)
+        profile = load_generate_profile(args.profile)
     except GenerateProfileError as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INPUT_ERROR
@@ -231,7 +231,6 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     try:
         output_paths = generate(
             profile,
-            raw,
             args.output,
             generated_at=args.generated_at,
         )

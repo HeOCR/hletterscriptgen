@@ -87,7 +87,7 @@ def test_extract_glyphs_respects_custom_min_dimension(tmp_path: Path) -> None:
     glyphs_strict = extract_glyphs(scan, min_dimension=20)
     glyphs_loose = extract_glyphs(scan, min_dimension=8)
 
-    assert len(glyphs_strict) == 1  # only the 30×30 blob passes
+    assert len(glyphs_strict) == 1  # only the 30x30 blob passes
     assert len(glyphs_loose) == 2
 
 
@@ -238,6 +238,6 @@ def test_crop_glyph_raises_on_out_of_bounds(tmp_path: Path) -> None:
     scan = tmp_path / "scan.png"
     _save_png(img, scan)
 
-    out_of_bounds = Glyph(x=40, y=40, width=20, height=20)  # extends past 50×50
+    out_of_bounds = Glyph(x=40, y=40, width=20, height=20)  # extends past 50x50
     with pytest.raises(ExtractionError, match="outside"):
         crop_glyph(scan, out_of_bounds)

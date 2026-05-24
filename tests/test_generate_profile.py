@@ -10,11 +10,9 @@ import pytest
 from hletterscriptgen.generate_profile import (
     GenerateProfile,
     GenerateProfileError,
-    GlyphAnnotation,
-    ScanAnnotation,
-    WriterAnnotation,
     load_generate_profile,
 )
+from hletterscriptgen.hashing import config_hash
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "generate_profile"
 
@@ -49,7 +47,7 @@ _MINIMAL_PROFILE = {
 
 
 def test_load_valid_fixture() -> None:
-    profile, raw = load_generate_profile(FIXTURE_DIR / "valid_profile.json")
+    profile = load_generate_profile(FIXTURE_DIR / "valid_profile.json")
     assert isinstance(profile, GenerateProfile)
     assert len(profile.writers) == 1
     writer = profile.writers[0]
@@ -62,13 +60,16 @@ def test_load_valid_fixture() -> None:
     assert len(scan.glyphs) == 2
     assert scan.glyphs[0].letter == "א"
     assert scan.glyphs[1].letter == "ב"
-    assert isinstance(raw, dict)
+    # config_hash must be a 64-char lowercase hex string
+    assert isinstance(profile.config_hash, str)
+    assert len(profile.config_hash) == 64
 
 
-def test_load_returns_raw_dict(tmp_path: Path) -> None:
+def test_profile_has_correct_config_hash(tmp_path: Path) -> None:
+    """config_hash must equal SHA-256 of the canonical JSON of the raw profile dict."""
     p = _write_profile(tmp_path, _MINIMAL_PROFILE)
-    _, raw = load_generate_profile(p)
-    assert raw == _MINIMAL_PROFILE
+    profile = load_generate_profile(p)
+    assert profile.config_hash == config_hash(_MINIMAL_PROFILE)
 
 
 def test_upstream_checkout_resolved_relative_to_profile(tmp_path: Path) -> None:
@@ -76,7 +77,7 @@ def test_upstream_checkout_resolved_relative_to_profile(tmp_path: Path) -> None:
     sub.mkdir()
     p = sub / "profile.json"
     p.write_text(json.dumps({**_MINIMAL_PROFILE, "upstream_checkout": "../data"}), encoding="utf-8")
-    profile, _ = load_generate_profile(p)
+    profile = load_generate_profile(p)
     assert profile.upstream_checkout == (tmp_path / "data").resolve()
 
 
@@ -85,11 +86,11 @@ def test_glyph_notes_optional(tmp_path: Path) -> None:
     profile_data = {
         "upstream_checkout": ".",
         "writers": [
-            {**_MINIMAL_WRITER, "scans": [{"entry_id": "e__s__p0001", "glyphs": [glyph_with_notes]}]},
+            {**_MINIMAL_WRITER, "scans": [{"entry_id": "e__s__p0001", "glyphs": [glyph_with_notes]}]},  # noqa: E501
         ],
     }
     p = _write_profile(tmp_path, profile_data)
-    profile, _ = load_generate_profile(p)
+    profile = load_generate_profile(p)
     assert profile.writers[0].scans[0].glyphs[0].notes == "a test note"
 
 
@@ -146,7 +147,7 @@ def test_raises_on_empty_writers(tmp_path: Path) -> None:
 
 
 def test_raises_on_duplicate_writer_ids(tmp_path: Path) -> None:
-    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [_MINIMAL_WRITER, _MINIMAL_WRITER]})
+    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [_MINIMAL_WRITER, _MINIMAL_WRITER]})  # noqa: E501
     with pytest.raises(GenerateProfileError, match="duplicate writer_id"):
         load_generate_profile(p)
 
@@ -180,7 +181,7 @@ def test_raises_on_empty_scans(tmp_path: Path) -> None:
 def test_raises_on_non_hebrew_letter(tmp_path: Path) -> None:
     bad_glyph = {**_MINIMAL_GLYPH, "letter": "A"}
     scan = {"entry_id": "e__s__p0001", "glyphs": [bad_glyph]}
-    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})
+    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})  # noqa: E501
     with pytest.raises(GenerateProfileError, match="Hebrew character"):
         load_generate_profile(p)
 
@@ -188,7 +189,7 @@ def test_raises_on_non_hebrew_letter(tmp_path: Path) -> None:
 def test_raises_on_multi_char_letter(tmp_path: Path) -> None:
     bad_glyph = {**_MINIMAL_GLYPH, "letter": "אב"}
     scan = {"entry_id": "e__s__p0001", "glyphs": [bad_glyph]}
-    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})
+    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})  # noqa: E501
     with pytest.raises(GenerateProfileError, match="Hebrew character"):
         load_generate_profile(p)
 
@@ -196,7 +197,7 @@ def test_raises_on_multi_char_letter(tmp_path: Path) -> None:
 def test_raises_on_negative_x(tmp_path: Path) -> None:
     bad_glyph = {**_MINIMAL_GLYPH, "x": -1}
     scan = {"entry_id": "e__s__p0001", "glyphs": [bad_glyph]}
-    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})
+    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})  # noqa: E501
     with pytest.raises(GenerateProfileError, match="≥ 0"):
         load_generate_profile(p)
 
@@ -204,15 +205,15 @@ def test_raises_on_negative_x(tmp_path: Path) -> None:
 def test_raises_on_zero_width(tmp_path: Path) -> None:
     bad_glyph = {**_MINIMAL_GLYPH, "width": 0}
     scan = {"entry_id": "e__s__p0001", "glyphs": [bad_glyph]}
-    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})
+    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})  # noqa: E501
     with pytest.raises(GenerateProfileError, match="≥ 1"):
         load_generate_profile(p)
 
 
-@pytest.mark.parametrize("letter", ["א", "ב", "ג", "ת", "ך", "ם", "ן", "ף", "ץ"])
+@pytest.mark.parametrize("letter", ["א", "ב", "ג", "ת", "ך", "ם", "ן", "ף", "ץ"])  # noqa: RUF001
 def test_accepts_all_hebrew_letter_forms(tmp_path: Path, letter: str) -> None:
     glyph = {**_MINIMAL_GLYPH, "letter": letter}
     scan = {"entry_id": "e__s__p0001", "glyphs": [glyph]}
-    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})
-    profile, _ = load_generate_profile(p)
+    p = _write_profile(tmp_path, {**_MINIMAL_PROFILE, "writers": [{**_MINIMAL_WRITER, "scans": [scan]}]})  # noqa: E501
+    profile = load_generate_profile(p)
     assert profile.writers[0].scans[0].glyphs[0].letter == letter

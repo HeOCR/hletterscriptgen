@@ -12,7 +12,6 @@ import pytest
 from hletterscriptgen import __version__
 from hletterscriptgen.cli import (
     EXIT_INPUT_ERROR,
-    EXIT_NOT_IMPLEMENTED,
     EXIT_OK,
     EXIT_VALIDATION_FAILED,
     main,
