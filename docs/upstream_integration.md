@@ -26,7 +26,7 @@ fetches scans on its own.
 
 1. **Pin an upstream revision.**
    [`upstream_pin_from_checkout(path)`](../src/hletterscriptgen/upstream.py)
-   returns `(repo, revision)` for the
+   returns an `UpstreamPin(repo, revision)` for the
    [`letter_set.v1.upstream`](letter_set_v1.md#upstream) block. `repo`
    is the `owner/name` form derived from `git remote get-url origin`
    (https, ssh, and `.git`-suffixed URLs all normalize the same way);
@@ -50,9 +50,9 @@ fetches scans on its own.
    - `rights.commercial_use_allowed`, `rights.derivatives_allowed`,
      and `rights.scan_redistribution_allowed` are all `True`. `None`
      fails the gate intentionally — only positive assertions pass.
-   - `rights.verification_status ∉ FORBIDDEN_VERIFICATION_STATUSES`
-     (`unverified`, `source_note_only`, `conflicting`, `rejected`).
-     Only `primary_page_checked` is a positive verification.
+   - `rights.verification_status ∈ ALLOWED_VERIFICATION_STATUSES`
+     (currently only `primary_page_checked`). An allowlist is used so
+     that new upstream statuses fail closed until explicitly reviewed.
    - `quality.usable_for_htr` is `True`.
 
    The sibling helper

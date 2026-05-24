@@ -11,7 +11,10 @@ from hletterscriptgen.upstream import (
     UpstreamCheckoutDirtyError,
     UpstreamDetachedHeadError,
     UpstreamEntry,
+    UpstreamError,
     UpstreamLoadError,
+    UpstreamPin,
+    _normalize_remote_url,
     explain_ineligible,
     is_eligible,
     load_entries,
@@ -58,7 +61,7 @@ def test_load_entries_skips_blank_lines(tmp_path: Path) -> None:
     target = tmp_path / "entries.jsonl"
     target.write_text(
         "\n"
-        '   \n'
+        "   \n"
         '{"entry_id":"a__b__p0001","source_id":"a__b","creators":[],"files":[],'
         '"rights":{"verification_status":"primary_page_checked"},'
         '"quality":{"legibility":"high"}}\n'
@@ -68,6 +71,12 @@ def test_load_entries_skips_blank_lines(tmp_path: Path) -> None:
     entries = list(load_entries(target))
     assert len(entries) == 1
     assert entries[0].entry_id == "a__b__p0001"
+
+
+def test_load_entries_raises_on_missing_file(tmp_path: Path) -> None:
+    missing = tmp_path / "nonexistent.jsonl"
+    with pytest.raises(UpstreamError):
+        list(load_entries(missing))
 
 
 def test_load_entries_raises_on_malformed_json(tmp_path: Path) -> None:
@@ -94,6 +103,14 @@ def test_load_entries_raises_on_missing_required_field(tmp_path: Path) -> None:
     with pytest.raises(UpstreamLoadError) as excinfo:
         list(load_entries(target))
     assert excinfo.value.line_number == 1
+
+
+def test_load_error_is_upstream_error(tmp_path: Path) -> None:
+    """UpstreamLoadError must be catchable as UpstreamError."""
+    target = tmp_path / "entries.jsonl"
+    target.write_text("{not valid\n", encoding="utf-8")
+    with pytest.raises(UpstreamError):
+        list(load_entries(target))
 
 
 # --- eligibility -------------------------------------------------------------
@@ -125,6 +142,32 @@ def test_reject_unverified_status(entries_by_id: dict[str, UpstreamEntry]) -> No
     assert any("verification_status" in r for r in reasons)
 
 
+def test_is_eligible_and_explain_ineligible_agree(
+    entries_by_id: dict[str, UpstreamEntry],
+) -> None:
+    """is_eligible and explain_ineligible must agree on every fixture entry."""
+    for entry in entries_by_id.values():
+        assert is_eligible(entry) == (explain_ineligible(entry) == [])
+
+
+# --- _normalize_remote_url (unit tests — no subprocess overhead) -------------
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://github.com/HeOCR/foo.git", "HeOCR/foo"),
+        ("https://github.com/HeOCR/foo", "HeOCR/foo"),
+        ("https://github.com/HeOCR/foo/", "HeOCR/foo"),
+        ("git@github.com:HeOCR/foo.git", "HeOCR/foo"),
+        ("ssh://git@github.com/HeOCR/foo.git", "HeOCR/foo"),
+        ("git://github.com/HeOCR/foo.git", "HeOCR/foo"),
+    ],
+)
+def test_normalize_remote_url(url: str, expected: str) -> None:
+    assert _normalize_remote_url(url) == expected
+
+
 # --- upstream_pin_from_checkout ----------------------------------------------
 
 
@@ -151,12 +194,12 @@ def _init_repo(path: Path, remote_url: str) -> str:
     return rev
 
 
-def test_pin_returns_repo_and_revision(tmp_path: Path) -> None:
+def test_pin_returns_upstream_pin(tmp_path: Path) -> None:
     repo = tmp_path / "upstream"
     rev = _init_repo(repo, "https://github.com/HeOCR/public-domain-hand-written-hebrew-scans.git")
-    assert upstream_pin_from_checkout(repo) == (
-        "HeOCR/public-domain-hand-written-hebrew-scans",
-        rev,
+    assert upstream_pin_from_checkout(repo) == UpstreamPin(
+        repo="HeOCR/public-domain-hand-written-hebrew-scans",
+        revision=rev,
     )
 
 
@@ -176,6 +219,15 @@ def test_pin_refuses_detached_head(tmp_path: Path) -> None:
         upstream_pin_from_checkout(repo)
 
 
+def test_checkout_errors_are_upstream_errors(tmp_path: Path) -> None:
+    """UpstreamCheckoutDirtyError and UpstreamDetachedHeadError must be UpstreamError."""
+    repo = tmp_path / "upstream"
+    rev = _init_repo(repo, "https://github.com/HeOCR/foo.git")
+    _git(repo, "checkout", "--detach", rev)
+    with pytest.raises(UpstreamError):
+        upstream_pin_from_checkout(repo)
+
+
 @pytest.mark.parametrize(
     "remote_url",
     [
@@ -186,7 +238,8 @@ def test_pin_refuses_detached_head(tmp_path: Path) -> None:
     ],
 )
 def test_pin_normalizes_remote_url(tmp_path: Path, remote_url: str) -> None:
-    repo = tmp_path / f"upstream_{abs(hash(remote_url))}"
+    # Each parametrize invocation gets its own tmp_path — no name collision.
+    repo = tmp_path / "upstream"
     _init_repo(repo, remote_url)
-    repo_name, _ = upstream_pin_from_checkout(repo)
-    assert repo_name == "HeOCR/foo"
+    pin = upstream_pin_from_checkout(repo)
+    assert pin.repo == "HeOCR/foo"
