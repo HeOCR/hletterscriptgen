@@ -293,6 +293,7 @@ def compute_ink_ratio(binary: Any, glyph: Glyph) -> float:
 
     Counts foreground pixels (value > 0 in the binarised array) within
     the bounding box and divides by the total number of pixels in the box.
+    This is pure NumPy arithmetic and does **not** require OpenCV.
 
     The result is in [0.0, 1.0]:
     * Near 0.0 — almost-empty crop (noise / whitespace artefact).
@@ -307,20 +308,14 @@ def compute_ink_ratio(binary: Any, glyph: Glyph) -> float:
         A 2-D uint8 NumPy array produced by :func:`binarize_scan`.
     glyph:
         Bounding box whose ink ratio to compute.
-
-    Raises
-    ------
-    ExtractionError
-        When ``opencv-python-headless`` is not installed.
     """
-    _require_cv2()  # binary must come from binarize_scan; ensure the stack is present
     crop = binary[glyph.y : glyph.y + glyph.height, glyph.x : glyph.x + glyph.width]
     ink_px = int((crop > 0).sum())
     return ink_px / (glyph.width * glyph.height)
 
 
 def compute_dhash(binary: Any, glyph: Glyph, *, hash_size: int = 8) -> int:
-    """Compute a 64-bit difference hash (dHash) for the glyph crop.
+    """Compute a difference hash (dHash) for the glyph crop.
 
     Resizes the crop to ``(hash_size + 1) x hash_size`` pixels and encodes
     horizontal pixel differences as a ``hash_size ** 2``-bit integer.
@@ -328,8 +323,11 @@ def compute_dhash(binary: Any, glyph: Glyph, *, hash_size: int = 8) -> int:
     :func:`hamming_distance`; hashes from visually distinct glyphs differ
     by many bits.
 
-    The default ``hash_size=8`` yields a 64-bit hash — a good balance of
-    sensitivity and collision resistance for glyph-sized images.
+    The default ``hash_size=8`` yields a 64-bit hash (8 x 8 difference bits)
+    — a good balance of sensitivity and collision resistance for glyph-sized
+    images.  The bit layout matches ``np.packbits`` row-major order with MSB
+    first, so ``hash_size ** 2`` must be divisible by 8 for unambiguous
+    packing; only ``hash_size=8`` is supported in production.
 
     Parameters
     ----------
@@ -344,17 +342,20 @@ def compute_dhash(binary: Any, glyph: Glyph, *, hash_size: int = 8) -> int:
     Raises
     ------
     ExtractionError
-        When ``opencv-python-headless`` is not installed.
+        When ``opencv-python-headless`` is not installed or ``hash_size`` < 1.
     """
+    if hash_size < 1:
+        raise ExtractionError(f"hash_size must be >= 1, got {hash_size}")
+    import numpy as np
+
     cv2 = _require_cv2()
     crop = binary[glyph.y : glyph.y + glyph.height, glyph.x : glyph.x + glyph.width]
     # Resize to (hash_size+1) columns x hash_size rows for horizontal differences.
     small = cv2.resize(crop, (hash_size + 1, hash_size))
-    bits = 0
-    for row in range(hash_size):
-        for col in range(hash_size):
-            bits = (bits << 1) | (1 if small[row, col] > small[row, col + 1] else 0)
-    return bits
+    # Vectorised: compare each pixel against its right neighbour in one shot.
+    diff = small[:, :-1] > small[:, 1:]  # (hash_size, hash_size) bool array
+    # Pack bits MSB-first (np.packbits default) and interpret as a big-endian integer.
+    return int.from_bytes(np.packbits(diff).tobytes(), "big")
 
 
 def hamming_distance(a: int, b: int) -> int:

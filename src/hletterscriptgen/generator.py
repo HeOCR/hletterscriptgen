@@ -1,4 +1,4 @@
-"""End-to-end glyph extraction pipeline (M3 MVP).
+"""End-to-end glyph extraction pipeline (M3/M4).
 
 Orchestrates the full generate flow:
 
@@ -7,11 +7,13 @@ Orchestrates the full generate flow:
 3. For each writer → each scan → each annotated glyph:
    a. Look up the upstream entry; skip ineligible entries (warn).
    b. Resolve the scan file path from the upstream checkout.
-   c. Binarise the scan once, then crop each glyph from the binary array.
-   d. Write the PNG to the output tree.
-   e. Record a ``variant`` for the letter_set.v1 document.
-4. Build and validate the ``letter_set.v1`` document for each writer.
-5. Write ``letter_set.json`` to the writer's output directory.
+   c. Binarise the scan once, then crop/hash/measure each glyph.
+   d. Accumulate variant dicts in memory (PNG bytes held, not yet written).
+4. Per letter: deduplicate near-duplicate variants by 64-bit dHash
+   (Hamming ≤ :data:`_DEDUP_HAMMING_THRESHOLD`); keep highest ``ink_ratio``.
+5. Write only the surviving PNG assets to the output tree.
+6. Build and validate the ``letter_set.v1`` document for each writer.
+7. Write ``letter_set.json`` to the writer's output directory.
 
 Output tree structure::
 
@@ -141,27 +143,40 @@ _DEDUP_HAMMING_THRESHOLD: int = 10
 
 
 def _dedup_letter_variants(variants: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Remove near-duplicate variants from one letter's candidate list.
+    """Return a deduplicated copy of one letter's candidate variant list.
 
     Clusters variants by 64-bit dHash using a greedy single-pass algorithm:
-    for each variant (in arrival order), check if it falls within
+    for each variant (in arrival order), check whether it falls within
     :data:`_DEDUP_HAMMING_THRESHOLD` Hamming bits of any already-selected
-    variant.  If it does, keep whichever has the higher ``ink_ratio``; if it
-    does not, add it as a new representative.
+    representative.
 
-    The retained ``_dhash`` key (internal use only) is stripped before
-    returning so that callers receive clean schema-ready dicts.
+    * If it **matches** an existing representative and has a **higher**
+      ``ink_ratio``, the representative's payload (variant_id, asset_path,
+      checksum, quality, source, png bytes, …) is replaced with the
+      candidate's — but the **cluster-centre hash** (the original
+      representative's ``_dhash``) is **preserved**.  This prevents the
+      cluster centre from drifting across successive updates, which would
+      otherwise cause a chain A ≈ B ≈ C (but A ≁ C) to incorrectly absorb
+      C into A's cluster.
+    * If it **matches** but has an equal or lower ``ink_ratio``, the existing
+      representative is kept unchanged.
+    * If it does **not match** any representative, it starts a new cluster.
+
+    Internal keys (``_dhash``, ``_png_bytes``) are **not** stripped here;
+    the caller is responsible for stripping them and writing PNG files after
+    this function returns.
 
     Parameters
     ----------
     variants:
-        List of variant dicts, each carrying a temporary ``_dhash`` int key
-        and a ``quality.ink_ratio`` float.
+        List of variant dicts, each carrying temporary ``_dhash`` (int) and
+        ``_png_bytes`` (bytes) keys alongside the schema-visible fields.
 
     Returns
     -------
     list[dict[str, Any]]
-        Deduplicated list, with the ``_dhash`` key removed from each entry.
+        Deduplicated list retaining all input keys (including ``_dhash`` and
+        ``_png_bytes``).
     """
     representatives: list[dict[str, Any]] = []
 
@@ -171,17 +186,14 @@ def _dedup_letter_variants(variants: list[dict[str, Any]]) -> list[dict[str, Any
         matched = False
         for rep in representatives:
             if hamming_distance(c_hash, rep["_dhash"]) <= _DEDUP_HAMMING_THRESHOLD:
-                # Replace representative if candidate has better ink ratio.
                 if c_ink > rep["quality"]["ink_ratio"]:
+                    cluster_hash = rep["_dhash"]  # preserve cluster centre
                     rep.update(candidate)
+                    rep["_dhash"] = cluster_hash  # restore after bulk update
                 matched = True
                 break
         if not matched:
             representatives.append(dict(candidate))
-
-    # Strip internal _dhash key before returning.
-    for rep in representatives:
-        rep.pop("_dhash", None)
 
     return representatives
 
@@ -194,18 +206,27 @@ def _extract_variants(
     generated_at: str,
     pending_warnings: list[str],
 ) -> tuple[dict[str, list[dict[str, Any]]], set[str], set[str]]:
-    """Crop all glyph variants for one writer and write PNG assets to disk.
+    """Crop, deduplicate, and write glyph variants for one writer.
 
     Returns ``(letters_map, observed_licenses, used_entry_ids)``.
     Non-fatal issues (missing entries, ineligible scans, crop failures) are
     appended to ``pending_warnings``.
 
+    Pipeline order within this function:
+
+    1. Accumulate all candidate variant dicts in memory, holding PNG bytes
+       under the temporary ``_png_bytes`` key (no disk writes yet).
+    2. Deduplicate per letter via :func:`_dedup_letter_variants`.
+    3. **Only then** write the surviving PNGs to disk, so that no files are
+       created for variants eliminated by dedup.
+    4. Derive ``used_entry_ids`` and ``observed_licenses`` from the survivors,
+       so that entries or licenses contributed solely by deduped-out variants
+       are not listed in the output manifest.
+
     The scan image is binarised once per scan file; all glyph crops for that
     scan share the same binary array, avoiding redundant I/O.
     """
     letters_map: dict[str, list[dict[str, Any]]] = {}
-    observed_licenses: set[str] = set()
-    used_entry_ids: set[str] = set()
 
     for scan in writer.scans:
         entry = entry_index.get(scan.entry_id)
@@ -257,8 +278,6 @@ def _extract_variants(
             )
             continue
 
-        used_entry_ids.add(scan.entry_id)
-
         for glyph_ann in scan.glyphs:
             if glyph_ann.letter not in HEBREW_LETTERS:
                 pending_warnings.append(
@@ -285,14 +304,13 @@ def _extract_variants(
 
             ink = compute_ink_ratio(binary, glyph)
             dhash = compute_dhash(binary, glyph)
-
             rel_path = _asset_path(scan.entry_id, glyph_ann.letter, glyph_ann)
-            out_file = writer_out_dir / rel_path
-            out_file.parent.mkdir(parents=True, exist_ok=True)
-            out_file.write_bytes(png_bytes)
 
             variant: dict[str, Any] = {
+                # Internal keys stripped after dedup + file write (not in schema).
                 "_dhash": dhash,
+                "_png_bytes": png_bytes,
+                # Schema-visible fields.
                 "variant_id": _variant_id(scan.entry_id, glyph_ann.letter, glyph_ann),
                 "asset_path": rel_path,
                 "checksum_sha256": _sha256_hex(png_bytes),
@@ -320,11 +338,42 @@ def _extract_variants(
                 variant["notes"] = glyph_ann.notes
 
             letters_map.setdefault(glyph_ann.letter, []).append(variant)
-            observed_licenses.add(license_expr)
 
-    # Dedup: for each letter, collapse near-duplicate variants (Hamming ≤ threshold).
-    for letter in list(letters_map.keys()):
+    # Dedup: collapse near-duplicate variants per letter (Hamming ≤ threshold).
+    # Warn when any are dropped so callers have visibility into data loss.
+    for letter in letters_map:
+        pre_count = len(letters_map[letter])
         letters_map[letter] = _dedup_letter_variants(letters_map[letter])
+        dropped = pre_count - len(letters_map[letter])
+        if dropped:
+            pending_warnings.append(
+                f"writer {writer.writer_id!r}: dropped {dropped} near-duplicate "
+                f"variant(s) for letter {letter!r} "
+                f"(dHash Hamming <= {_DEDUP_HAMMING_THRESHOLD})"
+            )
+
+    # Write only surviving variants to disk, then strip internal keys.
+    # Doing this after dedup guarantees no orphaned PNG files for eliminated variants.
+    for variants in letters_map.values():
+        for variant in variants:
+            png = variant.pop("_png_bytes")
+            variant.pop("_dhash")
+            out_file = writer_out_dir / variant["asset_path"]
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            out_file.write_bytes(png)
+
+    # Derive from survivors only: entries or licenses contributed solely by
+    # deduped-out variants must not appear in the manifest.
+    used_entry_ids: set[str] = {
+        v["source"]["scan_entry_id"]
+        for variants in letters_map.values()
+        for v in variants
+    }
+    observed_licenses: set[str] = {
+        v["source"]["license"]
+        for variants in letters_map.values()
+        for v in variants
+    }
 
     return letters_map, observed_licenses, used_entry_ids
 

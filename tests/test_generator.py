@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,7 +14,12 @@ cv2 = pytest.importorskip("cv2")
 import numpy as np  # noqa: E402
 
 from hletterscriptgen.generate_profile import load_generate_profile  # noqa: E402
-from hletterscriptgen.generator import GeneratorError, generate  # noqa: E402
+from hletterscriptgen.generator import (  # noqa: E402
+    GeneratorError,
+    GeneratorWarning,
+    _dedup_letter_variants,
+    generate,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers — synthetic upstream checkout + scan
@@ -458,6 +464,144 @@ def test_generate_mocked_config_hash_in_document(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# _dedup_letter_variants — isolated unit tests
+# ---------------------------------------------------------------------------
+
+# Build a minimal variant dict that satisfies the function's expectations.
+# Internal keys (_dhash, _png_bytes) must be present; schema keys are minimal.
+def _v(
+    vid: str,
+    ink: float,
+    dhash: int,
+    *,
+    entry_id: str = "e1",
+    license_id: str = "PDM-1.0",
+) -> dict[str, Any]:
+    return {
+        "_dhash": dhash,
+        "_png_bytes": b"\x89PNG stub",
+        "variant_id": vid,
+        "asset_path": f"glyphs/א/{vid}.png",
+        "checksum_sha256": "0" * 64,
+        "image": {"width_px": 20, "height_px": 20, "format": "png"},
+        "quality": {"ink_ratio": ink},
+        "source": {
+            "scan_entry_id": entry_id,
+            "license": license_id,
+            "bbox_in_source": {"x": 0, "y": 0, "width": 20, "height": 20},
+        },
+        "extracted_at": "2025-01-01T00:00:00+00:00",
+    }
+
+
+def test_dedup_single_variant_returned_unchanged() -> None:
+    """A single variant survives dedup unmodified."""
+    v = _v("v1", 0.3, dhash=0)
+    result = _dedup_letter_variants([v])
+    assert len(result) == 1
+    assert result[0]["variant_id"] == "v1"
+    assert result[0]["_dhash"] == 0  # caller strips; still present here
+
+
+def test_dedup_identical_hashes_keeps_higher_ink_ratio() -> None:
+    """Two variants with Hamming distance 0 collapse to one; higher ink wins."""
+    low = _v("v-low", ink=0.20, dhash=0)
+    high = _v("v-high", ink=0.45, dhash=0)
+    result = _dedup_letter_variants([low, high])
+    assert len(result) == 1
+    assert result[0]["quality"]["ink_ratio"] == pytest.approx(0.45)
+    assert result[0]["variant_id"] == "v-high"
+
+
+def test_dedup_identical_hashes_first_wins_when_ink_equal_or_lower() -> None:
+    """When the representative already has better ink, it is not replaced."""
+    first = _v("v-first", ink=0.50, dhash=7)
+    second = _v("v-second", ink=0.30, dhash=7)
+    result = _dedup_letter_variants([first, second])
+    assert len(result) == 1
+    assert result[0]["variant_id"] == "v-first"
+
+
+def test_dedup_distinct_hashes_both_survive() -> None:
+    """Two variants with Hamming distance > threshold both survive."""
+    a = _v("v-a", ink=0.3, dhash=0x0000_0000_0000_0000)
+    b = _v("v-b", ink=0.3, dhash=0xFFFF_FFFF_FFFF_FFFF)
+    result = _dedup_letter_variants([a, b])
+    assert len(result) == 2
+
+
+def test_dedup_threshold_boundary_at_exactly_threshold() -> None:
+    """Hamming distance exactly equal to the threshold is still a near-dupe."""
+    from hletterscriptgen.generator import _DEDUP_HAMMING_THRESHOLD
+
+    # Build a hash that differs by exactly _DEDUP_HAMMING_THRESHOLD bits from 0.
+    border_hash = (1 << _DEDUP_HAMMING_THRESHOLD) - 1  # lowest N bits set
+    assert bin(border_hash).count("1") == _DEDUP_HAMMING_THRESHOLD
+
+    a = _v("v-a", ink=0.3, dhash=0)
+    b = _v("v-b", ink=0.4, dhash=border_hash)
+    result = _dedup_letter_variants([a, b])
+    assert len(result) == 1
+
+
+def test_dedup_threshold_boundary_one_over_survives() -> None:
+    """Hamming distance one above threshold is distinct; both variants survive."""
+    from hletterscriptgen.generator import _DEDUP_HAMMING_THRESHOLD
+
+    over_hash = (1 << (_DEDUP_HAMMING_THRESHOLD + 1)) - 1  # N+1 bits set
+    assert bin(over_hash).count("1") == _DEDUP_HAMMING_THRESHOLD + 1
+
+    a = _v("v-a", ink=0.3, dhash=0)
+    b = _v("v-b", ink=0.3, dhash=over_hash)
+    result = _dedup_letter_variants([a, b])
+    assert len(result) == 2
+
+
+def test_dedup_cluster_centre_preserved_prevents_drift() -> None:
+    """Cluster centre hash must not drift when the representative is replaced.
+
+    Scenario (hashes chosen so that |A-B| <= threshold but |A-C| > threshold,
+    yet |B-C| <= threshold):
+
+    - A processed first → cluster centre = A_hash.
+    - B processed: near A → B replaces A (higher ink); centre stays A_hash.
+    - C processed: compared against A_hash (not B_hash).
+      |A-C| > threshold → C survives as a new cluster.
+
+    Without the fix, C would be compared against B_hash, |B-C| <= threshold,
+    and C would be incorrectly absorbed.
+    """
+    # A_hash = 0 (all zeros, 64 bits)
+    # B_hash = 0xFF (8 bits set): hamming(A,B) = 8 <= 10 (near-dupe)
+    # C_hash = 0xFFF (12 bits set): hamming(A,C) = 12 > 10 (distinct from A)
+    #          but hamming(B,C) = hamming(0xFF, 0xFFF) = 4 <= 10 (near B)
+    A_hash = 0x00
+    B_hash = 0xFF        # 8 bits set; hamming(A,B)=8 <= 10
+    C_hash = 0xFFF       # 12 bits set; hamming(A,C)=12 > 10; hamming(B,C)=4 <= 10
+
+    a = _v("v-a", ink=0.20, dhash=A_hash)
+    b = _v("v-b", ink=0.40, dhash=B_hash)  # better ink → replaces A in cluster
+    c = _v("v-c", ink=0.30, dhash=C_hash)  # must survive as its own cluster
+
+    result = _dedup_letter_variants([a, b, c])
+    assert len(result) == 2, (
+        "C should survive as a distinct cluster (|A-C|=12 > threshold), "
+        "but the cluster centre drifted to B_hash and absorbed C"
+    )
+    ids = {r["variant_id"] for r in result}
+    assert "v-b" in ids  # winner of first cluster
+    assert "v-c" in ids  # distinct second cluster
+
+
+def test_dedup_internal_keys_not_stripped() -> None:
+    """_dedup_letter_variants must NOT strip _dhash or _png_bytes — that is the caller's job."""
+    v = _v("v1", 0.3, dhash=42)
+    result = _dedup_letter_variants([v])
+    assert "_dhash" in result[0]
+    assert "_png_bytes" in result[0]
+
+
+# ---------------------------------------------------------------------------
 # M4: quality metrics
 # ---------------------------------------------------------------------------
 
@@ -501,13 +645,8 @@ def test_generate_mocked_variant_has_quality(tmp_path: Path) -> None:
     profile_path = _make_profile(tmp_path, upstream)
     output_dir = tmp_path / "out"
 
-    fake_binary = MagicMock()
-    # compute_ink_ratio will call (crop > 0).sum() on the binary slice;
-    # wire the mock so that expression returns 50 (out of 400 px).
-    fake_binary.__getitem__ = MagicMock(return_value=MagicMock(**{"__gt__": MagicMock(return_value=MagicMock(**{"sum.return_value": 50}))}))  # noqa: E501
-
     profile = load_generate_profile(profile_path)
-    with patch("hletterscriptgen.generator.binarize_scan", return_value=fake_binary):
+    with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
         with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
             with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.25):
                 with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
@@ -554,11 +693,13 @@ def test_generate_dedup_removes_near_duplicate(tmp_path: Path) -> None:
     output_dir = tmp_path / "out"
     profile = load_generate_profile(p)
 
-    with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
-        with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
-            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
-                with patch("hletterscriptgen.generator.compute_dhash", return_value=42):
-                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+    ts = "2025-01-01T00:00:00+00:00"
+    with pytest.warns(GeneratorWarning, match="near-duplicate"):
+        with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
+            with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
+                with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
+                    with patch("hletterscriptgen.generator.compute_dhash", return_value=42):
+                        paths = generate(profile, output_dir, generated_at=ts)
 
     doc = json.loads(paths[0].read_text(encoding="utf-8"))
     # Both annotations had the same hash → dedup leaves exactly one variant
@@ -596,11 +737,13 @@ def test_generate_dedup_keeps_higher_ink_ratio(tmp_path: Path) -> None:
     # First call returns 0.20, second returns 0.45 (better)
     ink_side_effect = [0.20, 0.45]
 
-    with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
-        with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
-            with patch("hletterscriptgen.generator.compute_ink_ratio", side_effect=ink_side_effect):
-                with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
-                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+    ts = "2025-01-01T00:00:00+00:00"
+    with pytest.warns(GeneratorWarning, match="near-duplicate"):
+        with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
+            with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
+                with patch("hletterscriptgen.generator.compute_ink_ratio", side_effect=ink_side_effect):  # noqa: E501
+                    with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
+                        paths = generate(profile, output_dir, generated_at=ts)
 
     doc = json.loads(paths[0].read_text(encoding="utf-8"))
     assert len(doc["letters"]["א"]) == 1
