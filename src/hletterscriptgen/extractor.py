@@ -18,6 +18,9 @@ The module exposes:
 * :class:`Glyph` — frozen dataclass for a detected blob's bounding box.
 * :func:`binarize_scan` — load a scan and return its Otsu-binarised array.
 * :func:`crop_binary` — crop a glyph from an already-binarised array.
+* :func:`compute_ink_ratio` — fraction of ink pixels in a glyph bbox.
+* :func:`compute_dhash` — 64-bit difference hash of a glyph crop.
+* :func:`hamming_distance` — Hamming distance between two integer hashes.
 * :func:`extract_glyphs` — detect blobs in a scan via CCA.
 * :func:`crop_glyph` — convenience wrapper: binarize a scan and crop one blob.
 """
@@ -285,13 +288,96 @@ def crop_glyph(image_path: Path, glyph: Glyph) -> bytes:
     return crop_binary(binarize_scan(image_path), glyph)
 
 
+def compute_ink_ratio(binary: Any, glyph: Glyph) -> float:
+    """Return the fraction of ink pixels in the glyph bbox.
+
+    Counts foreground pixels (value > 0 in the binarised array) within
+    the bounding box and divides by the total number of pixels in the box.
+
+    The result is in [0.0, 1.0]:
+    * Near 0.0 — almost-empty crop (noise / whitespace artefact).
+    * Near 1.0 — fully filled bbox (also suspicious — may be a ruled line
+      or bleed-through that passed the :data:`DEFAULT_MAX_AREA_FRACTION`
+      filter).
+    * 0.10-0.60 — typical range for legible Hebrew glyphs.
+
+    Parameters
+    ----------
+    binary:
+        A 2-D uint8 NumPy array produced by :func:`binarize_scan`.
+    glyph:
+        Bounding box whose ink ratio to compute.
+
+    Raises
+    ------
+    ExtractionError
+        When ``opencv-python-headless`` is not installed.
+    """
+    _require_cv2()  # binary must come from binarize_scan; ensure the stack is present
+    crop = binary[glyph.y : glyph.y + glyph.height, glyph.x : glyph.x + glyph.width]
+    ink_px = int((crop > 0).sum())
+    return ink_px / (glyph.width * glyph.height)
+
+
+def compute_dhash(binary: Any, glyph: Glyph, *, hash_size: int = 8) -> int:
+    """Compute a 64-bit difference hash (dHash) for the glyph crop.
+
+    Resizes the crop to ``(hash_size + 1) x hash_size`` pixels and encodes
+    horizontal pixel differences as a ``hash_size ** 2``-bit integer.
+    Identical or near-identical glyphs produce hashes with a low
+    :func:`hamming_distance`; hashes from visually distinct glyphs differ
+    by many bits.
+
+    The default ``hash_size=8`` yields a 64-bit hash — a good balance of
+    sensitivity and collision resistance for glyph-sized images.
+
+    Parameters
+    ----------
+    binary:
+        A 2-D uint8 NumPy array produced by :func:`binarize_scan`.
+    glyph:
+        Bounding box to hash.
+    hash_size:
+        Controls the hash width/height.  The hash contains
+        ``hash_size ** 2`` bits.  Defaults to 8.
+
+    Raises
+    ------
+    ExtractionError
+        When ``opencv-python-headless`` is not installed.
+    """
+    cv2 = _require_cv2()
+    crop = binary[glyph.y : glyph.y + glyph.height, glyph.x : glyph.x + glyph.width]
+    # Resize to (hash_size+1) columns x hash_size rows for horizontal differences.
+    small = cv2.resize(crop, (hash_size + 1, hash_size))
+    bits = 0
+    for row in range(hash_size):
+        for col in range(hash_size):
+            bits = (bits << 1) | (1 if small[row, col] > small[row, col + 1] else 0)
+    return bits
+
+
+def hamming_distance(a: int, b: int) -> int:
+    """Return the Hamming distance (number of differing bits) between two hashes.
+
+    Works on any non-negative integers; meaningful for hashes returned by
+    :func:`compute_dhash`.  A distance of 0 means the hashes are identical;
+    ≤ 10 out of 64 bits indicates near-identical images at the default
+    ``hash_size=8``.
+    """
+    return bin(a ^ b).count("1")
+
+
 __all__ = [
     "DEFAULT_MAX_AREA_FRACTION",
     "MIN_GLYPH_PX",
     "ExtractionError",
     "Glyph",
     "binarize_scan",
+    "compute_dhash",
+    "compute_ink_ratio",
     "crop_binary",
     "crop_glyph",
     "extract_glyphs",
+    "hamming_distance",
 ]

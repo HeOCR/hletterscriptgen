@@ -45,7 +45,15 @@ from pathlib import Path
 from typing import Any
 
 from hletterscriptgen import HEBREW_LETTERS, __version__
-from hletterscriptgen.extractor import ExtractionError, Glyph, binarize_scan, crop_binary
+from hletterscriptgen.extractor import (
+    ExtractionError,
+    Glyph,
+    binarize_scan,
+    compute_dhash,
+    compute_ink_ratio,
+    crop_binary,
+    hamming_distance,
+)
 from hletterscriptgen.generate_profile import (
     GenerateProfile,
     GlyphAnnotation,
@@ -123,6 +131,59 @@ def _resolve_scan_path(
         if f.role == "original" and f.local_path is not None:
             return (upstream_checkout / f.local_path).resolve()
     return None
+
+
+# Hamming-distance threshold for near-duplicate dHash clustering.  Two glyphs
+# whose hashes differ by ≤ this many bits are considered near-duplicates; the
+# one with the higher ink_ratio is kept.  10 / 64 bits ≈ 15 % of bits differ,
+# which is the conventional loose threshold for perceptual-hash deduplication.
+_DEDUP_HAMMING_THRESHOLD: int = 10
+
+
+def _dedup_letter_variants(variants: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove near-duplicate variants from one letter's candidate list.
+
+    Clusters variants by 64-bit dHash using a greedy single-pass algorithm:
+    for each variant (in arrival order), check if it falls within
+    :data:`_DEDUP_HAMMING_THRESHOLD` Hamming bits of any already-selected
+    variant.  If it does, keep whichever has the higher ``ink_ratio``; if it
+    does not, add it as a new representative.
+
+    The retained ``_dhash`` key (internal use only) is stripped before
+    returning so that callers receive clean schema-ready dicts.
+
+    Parameters
+    ----------
+    variants:
+        List of variant dicts, each carrying a temporary ``_dhash`` int key
+        and a ``quality.ink_ratio`` float.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        Deduplicated list, with the ``_dhash`` key removed from each entry.
+    """
+    representatives: list[dict[str, Any]] = []
+
+    for candidate in variants:
+        c_hash = candidate["_dhash"]
+        c_ink = candidate["quality"]["ink_ratio"]
+        matched = False
+        for rep in representatives:
+            if hamming_distance(c_hash, rep["_dhash"]) <= _DEDUP_HAMMING_THRESHOLD:
+                # Replace representative if candidate has better ink ratio.
+                if c_ink > rep["quality"]["ink_ratio"]:
+                    rep.update(candidate)
+                matched = True
+                break
+        if not matched:
+            representatives.append(dict(candidate))
+
+    # Strip internal _dhash key before returning.
+    for rep in representatives:
+        rep.pop("_dhash", None)
+
+    return representatives
 
 
 def _extract_variants(
@@ -222,12 +283,16 @@ def _extract_variants(
                 )
                 continue
 
+            ink = compute_ink_ratio(binary, glyph)
+            dhash = compute_dhash(binary, glyph)
+
             rel_path = _asset_path(scan.entry_id, glyph_ann.letter, glyph_ann)
             out_file = writer_out_dir / rel_path
             out_file.parent.mkdir(parents=True, exist_ok=True)
             out_file.write_bytes(png_bytes)
 
             variant: dict[str, Any] = {
+                "_dhash": dhash,
                 "variant_id": _variant_id(scan.entry_id, glyph_ann.letter, glyph_ann),
                 "asset_path": rel_path,
                 "checksum_sha256": _sha256_hex(png_bytes),
@@ -235,6 +300,9 @@ def _extract_variants(
                     "width_px": glyph_ann.width,
                     "height_px": glyph_ann.height,
                     "format": "png",
+                },
+                "quality": {
+                    "ink_ratio": ink,
                 },
                 "source": {
                     "scan_entry_id": scan.entry_id,
@@ -253,6 +321,10 @@ def _extract_variants(
 
             letters_map.setdefault(glyph_ann.letter, []).append(variant)
             observed_licenses.add(license_expr)
+
+    # Dedup: for each letter, collapse near-duplicate variants (Hamming ≤ threshold).
+    for letter in list(letters_map.keys()):
+        letters_map[letter] = _dedup_letter_variants(letters_map[letter])
 
     return letters_map, observed_licenses, used_entry_ids
 

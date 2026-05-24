@@ -343,11 +343,12 @@ def test_generate_document_structure_mocked(tmp_path: Path) -> None:
     output_dir = tmp_path / "out"
 
     profile = load_generate_profile(profile_path)
-    fake_binary = MagicMock()
 
-    with patch("hletterscriptgen.generator.binarize_scan", return_value=fake_binary):
+    with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
         with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
-            paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
+                with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
 
     assert len(paths) == 1
     doc = json.loads(paths[0].read_text(encoding="utf-8"))
@@ -368,7 +369,9 @@ def test_generate_mocked_validates(tmp_path: Path) -> None:
     profile = load_generate_profile(profile_path)
     with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
         with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
-            paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
+                with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
 
     doc = json.loads(paths[0].read_text(encoding="utf-8"))
     result = validate_document(doc)
@@ -384,7 +387,9 @@ def test_generate_mocked_writes_png_assets(tmp_path: Path) -> None:
     profile = load_generate_profile(profile_path)
     with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
         with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
-            paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
+                with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
 
     doc = json.loads(paths[0].read_text(encoding="utf-8"))
     writer_dir = paths[0].parent
@@ -426,7 +431,9 @@ def test_generate_mocked_glyph_notes_in_variant(tmp_path: Path) -> None:
     profile = load_generate_profile(p)
     with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
         with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
-            paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
+                with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
 
     doc = json.loads(paths[0].read_text(encoding="utf-8"))
     variant = doc["letters"]["א"][0]
@@ -442,7 +449,219 @@ def test_generate_mocked_config_hash_in_document(tmp_path: Path) -> None:
     profile = load_generate_profile(profile_path)
     with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
         with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
-            paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
+                with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
 
     doc = json.loads(paths[0].read_text(encoding="utf-8"))
     assert doc["generator"]["config_hash"] == profile.config_hash
+
+
+# ---------------------------------------------------------------------------
+# M4: quality metrics
+# ---------------------------------------------------------------------------
+
+
+def test_generate_variant_has_quality_ink_ratio(tmp_path: Path) -> None:
+    """Every generated variant must carry a quality.ink_ratio in [0, 1]."""
+    upstream = _make_upstream_checkout(tmp_path)
+    profile_path = _make_profile(tmp_path, upstream)
+    output_dir = tmp_path / "out"
+
+    profile = load_generate_profile(profile_path)
+    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+
+    doc = json.loads(paths[0].read_text(encoding="utf-8"))
+    for variants in doc["letters"].values():
+        for variant in variants:
+            assert "quality" in variant, f"variant {variant['variant_id']!r} missing 'quality'"
+            ink = variant["quality"]["ink_ratio"]
+            assert isinstance(ink, float), f"ink_ratio must be float, got {type(ink)}"
+            assert 0.0 <= ink <= 1.0, f"ink_ratio out of range: {ink}"
+
+
+def test_generate_variant_ink_ratio_nonzero_for_solid_blobs(tmp_path: Path) -> None:
+    """Solid black blobs should produce an ink_ratio > 0."""
+    upstream = _make_upstream_checkout(tmp_path)
+    profile_path = _make_profile(tmp_path, upstream)
+    output_dir = tmp_path / "out"
+
+    profile = load_generate_profile(profile_path)
+    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+
+    doc = json.loads(paths[0].read_text(encoding="utf-8"))
+    for variants in doc["letters"].values():
+        for variant in variants:
+            assert variant["quality"]["ink_ratio"] > 0.0
+
+
+def test_generate_mocked_variant_has_quality(tmp_path: Path) -> None:
+    """Mock path: quality.ink_ratio must still be present and valid."""
+    upstream = _make_upstream_checkout_no_cv2(tmp_path)
+    profile_path = _make_profile(tmp_path, upstream)
+    output_dir = tmp_path / "out"
+
+    fake_binary = MagicMock()
+    # compute_ink_ratio will call (crop > 0).sum() on the binary slice;
+    # wire the mock so that expression returns 50 (out of 400 px).
+    fake_binary.__getitem__ = MagicMock(return_value=MagicMock(**{"__gt__": MagicMock(return_value=MagicMock(**{"sum.return_value": 50}))}))  # noqa: E501
+
+    profile = load_generate_profile(profile_path)
+    with patch("hletterscriptgen.generator.binarize_scan", return_value=fake_binary):
+        with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
+            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.25):
+                with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+
+    doc = json.loads(paths[0].read_text(encoding="utf-8"))
+    for variants in doc["letters"].values():
+        for variant in variants:
+            assert variant["quality"]["ink_ratio"] == pytest.approx(0.25)
+
+
+# ---------------------------------------------------------------------------
+# M4: near-duplicate deduplication
+# ---------------------------------------------------------------------------
+
+
+def test_generate_dedup_removes_near_duplicate(tmp_path: Path) -> None:
+    """Two glyphs with identical dHash (Hamming 0) should collapse to one."""
+    upstream = _make_upstream_checkout_no_cv2(tmp_path)
+
+    # Two glyphs annotated on the same entry, same letter — will get identical
+    # hashes because compute_dhash is patched to return the same value.
+    profile_data = {
+        "upstream_checkout": str(upstream),
+        "writers": [
+            {
+                "writer_id": "writer_test_a",
+                "attribution_method": "manual_review",
+                "scans": [
+                    {
+                        "entry_id": "test__writer_a__p0001",
+                        "glyphs": [
+                            {"letter": "א", "x": 5, "y": 5, "width": 20, "height": 20},
+                            {"letter": "א", "x": 5, "y": 5, "width": 20, "height": 20},
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    p = tmp_path / "profile.json"
+    p.write_text(json.dumps(profile_data), encoding="utf-8")
+
+    output_dir = tmp_path / "out"
+    profile = load_generate_profile(p)
+
+    with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
+        with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
+            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
+                with patch("hletterscriptgen.generator.compute_dhash", return_value=42):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+
+    doc = json.loads(paths[0].read_text(encoding="utf-8"))
+    # Both annotations had the same hash → dedup leaves exactly one variant
+    assert len(doc["letters"]["א"]) == 1
+
+
+def test_generate_dedup_keeps_higher_ink_ratio(tmp_path: Path) -> None:
+    """When two near-dupes differ in ink_ratio, the higher one survives."""
+    upstream = _make_upstream_checkout_no_cv2(tmp_path)
+
+    profile_data = {
+        "upstream_checkout": str(upstream),
+        "writers": [
+            {
+                "writer_id": "writer_test_a",
+                "attribution_method": "manual_review",
+                "scans": [
+                    {
+                        "entry_id": "test__writer_a__p0001",
+                        "glyphs": [
+                            {"letter": "א", "x": 5, "y": 5, "width": 20, "height": 20},
+                            {"letter": "א", "x": 5, "y": 5, "width": 20, "height": 20},
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    p = tmp_path / "profile.json"
+    p.write_text(json.dumps(profile_data), encoding="utf-8")
+
+    output_dir = tmp_path / "out"
+    profile = load_generate_profile(p)
+
+    # First call returns 0.20, second returns 0.45 (better)
+    ink_side_effect = [0.20, 0.45]
+
+    with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
+        with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
+            with patch("hletterscriptgen.generator.compute_ink_ratio", side_effect=ink_side_effect):
+                with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+
+    doc = json.loads(paths[0].read_text(encoding="utf-8"))
+    assert len(doc["letters"]["א"]) == 1
+    assert doc["letters"]["א"][0]["quality"]["ink_ratio"] == pytest.approx(0.45)
+
+
+def test_generate_dedup_keeps_distinct_glyphs(tmp_path: Path) -> None:
+    """Two glyphs with Hamming distance > threshold must both survive dedup."""
+    upstream = _make_upstream_checkout_no_cv2(tmp_path)
+    profile_data = {
+        "upstream_checkout": str(upstream),
+        "writers": [
+            {
+                "writer_id": "writer_test_a",
+                "attribution_method": "manual_review",
+                "scans": [
+                    {
+                        "entry_id": "test__writer_a__p0001",
+                        "glyphs": [
+                            {"letter": "א", "x": 5, "y": 5, "width": 20, "height": 20},
+                            {"letter": "א", "x": 35, "y": 5, "width": 20, "height": 20},
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    p = tmp_path / "profile.json"
+    p.write_text(json.dumps(profile_data), encoding="utf-8")
+
+    output_dir = tmp_path / "out"
+    profile = load_generate_profile(p)
+
+    # Hashes differ by >> 10 bits → both survive
+    with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
+        with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
+            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
+                with patch(
+                    "hletterscriptgen.generator.compute_dhash",
+                    side_effect=[0x0000_0000_0000_0000, 0xFFFF_FFFF_FFFF_FFFF],
+                ):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+
+    doc = json.loads(paths[0].read_text(encoding="utf-8"))
+    assert len(doc["letters"]["א"]) == 2
+
+
+def test_generate_variant_no_dhash_in_output(tmp_path: Path) -> None:
+    """The internal _dhash key must not leak into the written letter_set.json."""
+    upstream = _make_upstream_checkout_no_cv2(tmp_path)
+    profile_path = _make_profile(tmp_path, upstream)
+    output_dir = tmp_path / "out"
+
+    profile = load_generate_profile(profile_path)
+    with patch("hletterscriptgen.generator.binarize_scan", return_value=MagicMock()):
+        with patch("hletterscriptgen.generator.crop_binary", return_value=_FAKE_PNG):
+            with patch("hletterscriptgen.generator.compute_ink_ratio", return_value=0.3):
+                with patch("hletterscriptgen.generator.compute_dhash", return_value=0):
+                    paths = generate(profile, output_dir, generated_at="2025-01-01T00:00:00+00:00")
+
+    doc = json.loads(paths[0].read_text(encoding="utf-8"))
+    for variants in doc["letters"].values():
+        for variant in variants:
+            assert "_dhash" not in variant

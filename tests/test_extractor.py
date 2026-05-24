@@ -13,8 +13,12 @@ from hletterscriptgen.extractor import (  # noqa: E402
     MIN_GLYPH_PX,
     ExtractionError,
     Glyph,
+    binarize_scan,
+    compute_dhash,
+    compute_ink_ratio,
     crop_glyph,
     extract_glyphs,
+    hamming_distance,
 )
 
 # ---------------------------------------------------------------------------
@@ -241,3 +245,126 @@ def test_crop_glyph_raises_on_out_of_bounds(tmp_path: Path) -> None:
     out_of_bounds = Glyph(x=40, y=40, width=20, height=20)  # extends past 50x50
     with pytest.raises(ExtractionError, match="outside"):
         crop_glyph(scan, out_of_bounds)
+
+
+# ---------------------------------------------------------------------------
+# compute_ink_ratio
+# ---------------------------------------------------------------------------
+
+
+def _binarize_array(img: np.ndarray) -> np.ndarray:  # type: ignore[type-arg]
+    """Binarise a synthetic BGR image the same way binarize_scan does."""
+    grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    return binary
+
+
+def test_ink_ratio_fully_filled() -> None:
+    """A glyph bbox that is entirely ink should have ratio 1.0."""
+    img = _white_image(50, 50)
+    _draw_black_rect(img, x=0, y=0, w=50, h=50)  # entire image is black
+    binary = _binarize_array(img)
+    glyph = Glyph(x=0, y=0, width=50, height=50)
+    ratio = compute_ink_ratio(binary, glyph)
+    assert ratio == pytest.approx(1.0, abs=1e-6)
+
+
+def test_ink_ratio_empty_crop() -> None:
+    """A crop with no ink pixels should have ratio 0.0."""
+    img = _white_image(50, 50)  # entirely white — no ink
+    binary = _binarize_array(img)
+    glyph = Glyph(x=0, y=0, width=50, height=50)
+    ratio = compute_ink_ratio(binary, glyph)
+    assert ratio == pytest.approx(0.0, abs=1e-6)
+
+
+def test_ink_ratio_partial_fill() -> None:
+    """Half-filled crop should yield ratio ≈ 0.5."""
+    # 20x10 bbox: fill the top 10x10 half with black
+    img = _white_image(40, 20)
+    _draw_black_rect(img, x=0, y=0, w=10, h=10)
+    binary = _binarize_array(img)
+    glyph = Glyph(x=0, y=0, width=20, height=10)
+    ratio = compute_ink_ratio(binary, glyph)
+    # 10x10 ink in a 20x10 bbox → exactly 0.5
+    assert ratio == pytest.approx(0.5, abs=1e-6)
+
+
+def test_ink_ratio_is_in_unit_interval(tmp_path: Path) -> None:
+    """ink_ratio must always be in [0.0, 1.0] for any binary input."""
+    img = _white_image(100, 100)
+    _draw_black_rect(img, x=10, y=10, w=30, h=30)
+    scan = tmp_path / "scan.png"
+    _save_png(img, scan)
+    binary = binarize_scan(scan)
+    glyph = Glyph(x=10, y=10, width=30, height=30)
+    ratio = compute_ink_ratio(binary, glyph)
+    assert 0.0 <= ratio <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# compute_dhash / hamming_distance
+# ---------------------------------------------------------------------------
+
+
+def test_dhash_returns_integer() -> None:
+    """compute_dhash must return a plain int."""
+    img = _white_image(50, 50)
+    _draw_black_rect(img, x=5, y=5, w=20, h=20)
+    binary = _binarize_array(img)
+    glyph = Glyph(x=5, y=5, width=20, height=20)
+    h = compute_dhash(binary, glyph)
+    assert isinstance(h, int)
+
+
+def test_dhash_identical_glyphs_have_zero_distance() -> None:
+    """The same crop hashed twice should produce identical hashes."""
+    img = _white_image(60, 60)
+    _draw_black_rect(img, x=10, y=10, w=30, h=30)
+    binary = _binarize_array(img)
+    glyph = Glyph(x=10, y=10, width=30, height=30)
+    h1 = compute_dhash(binary, glyph)
+    h2 = compute_dhash(binary, glyph)
+    assert hamming_distance(h1, h2) == 0
+
+
+def test_dhash_different_glyphs_have_positive_distance() -> None:
+    """Two structurally different crops should produce hashes with distance > 0.
+
+    Build the binary array directly (skip Otsu) so that glyph A has ink on
+    its left half and glyph B has ink on its right half.  The resulting
+    horizontal-difference patterns are mirror images → hashes differ.
+    """
+    binary = np.zeros((40, 100), dtype=np.uint8)
+    # Glyph A: left 20 px of a 40x30 bbox are ink, right 20 px are background.
+    binary[5:35, 0:20] = 255
+    # Glyph B: right 20 px of a 40x30 bbox are ink, left 20 px are background.
+    binary[5:35, 80:100] = 255
+    g_a = Glyph(x=0, y=5, width=40, height=30)
+    g_b = Glyph(x=60, y=5, width=40, height=30)
+    ha = compute_dhash(binary, g_a)
+    hb = compute_dhash(binary, g_b)
+    assert hamming_distance(ha, hb) > 0
+
+
+def test_hamming_distance_identical() -> None:
+    assert hamming_distance(0b1010, 0b1010) == 0
+
+
+def test_hamming_distance_all_differ() -> None:
+    """0x00 vs 0xFF for an 8-bit value should give distance 8."""
+    assert hamming_distance(0x00, 0xFF) == 8
+
+
+def test_hamming_distance_single_bit() -> None:
+    assert hamming_distance(0b0001, 0b0000) == 1
+
+
+def test_dhash_default_is_64_bits() -> None:
+    """Default hash_size=8 should produce a value expressible in ≤ 64 bits."""
+    img = _white_image(50, 50)
+    _draw_black_rect(img, x=5, y=5, w=20, h=20)
+    binary = _binarize_array(img)
+    glyph = Glyph(x=5, y=5, width=20, height=20)
+    h = compute_dhash(binary, glyph)
+    assert 0 <= h < (1 << 64)
