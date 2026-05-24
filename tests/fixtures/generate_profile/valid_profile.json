@@ -1,0 +1,19 @@
+{
+  "upstream_checkout": "../upstream",
+  "writers": [
+    {
+      "writer_id": "writer_fixture_a",
+      "attribution_method": "manual_review",
+      "notes": "Fixture writer for tests",
+      "scans": [
+        {
+          "entry_id": "fixture__eligible_pdm__p0001",
+          "glyphs": [
+            {"letter": "א", "x": 5, "y": 5, "width": 20, "height": 20},
+            {"letter": "ב", "x": 35, "y": 5, "width": 20, "height": 20}
+          ]
+        }
+      ]
+    }
+  ]
+}

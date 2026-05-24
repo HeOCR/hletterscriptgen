@@ -61,13 +61,13 @@ def test_validate_subcommand_fails_on_bad_doc(
     assert all("kind" in err for err in payload["errors"])
 
 
-def test_generate_subcommand_exits_not_implemented(
+def test_generate_subcommand_requires_profile_and_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    code = main(["generate"])
-    assert code == EXIT_NOT_IMPLEMENTED
-    assert EXIT_NOT_IMPLEMENTED == 69
-    assert "not yet implemented" in capsys.readouterr().err
+    # --profile and --output are now required; omitting them is a usage error.
+    with pytest.raises(SystemExit) as exc_info:
+        main(["generate"])
+    assert exc_info.value.code == 2  # argparse usage error
 
 
 def test_check_eligible_text_mixed(capsys: pytest.CaptureFixture[str]) -> None:
