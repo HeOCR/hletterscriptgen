@@ -25,6 +25,7 @@
         "asset_path": "letters/alef/alef-0001.png",
         "checksum_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
         "image": { "width_px": 96, "height_px": 96, "format": "png" },
+        "quality": { "ink_ratio": 0.31 },
         "source": {
           "scan_entry_id": "example-scan-0001",
           "scan_url": "https://example.invalid/scans/example-scan-0001",
@@ -39,6 +40,7 @@
         "asset_path": "letters/alef/alef-0002.png",
         "checksum_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
         "image": { "width_px": 92, "height_px": 100, "format": "png" },
+        "quality": { "ink_ratio": 0.27 },
         "source": {
           "scan_entry_id": "example-scan-0002",
           "license": "PDM-1.0",
@@ -52,6 +54,7 @@
         "asset_path": "letters/bet/bet-0001.png",
         "checksum_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
         "image": { "width_px": 88, "height_px": 90, "format": "png" },
+        "quality": { "ink_ratio": 0.22 },
         "source": {
           "scan_entry_id": "example-scan-0001",
           "license": "CC-BY-SA-4.0",
@@ -66,6 +69,7 @@
         "asset_path": "letters/kaf-final/kaf-final-0001.png",
         "checksum_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
         "image": { "width_px": 80, "height_px": 110, "format": "png" },
+        "quality": { "ink_ratio": 0.18 },
         "source": {
           "scan_entry_id": "example-scan-0002",
           "license": "PDM-1.0",

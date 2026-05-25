@@ -142,6 +142,7 @@
         "asset_path",
         "checksum_sha256",
         "image",
+        "quality",
         "source"
       ],
       "properties": {
@@ -169,6 +170,20 @@
             "format": {
               "type": "string",
               "enum": ["png", "webp", "tiff"]
+            }
+          }
+        },
+        "quality": {
+          "type": "object",
+          "description": "Per-variant quality metrics computed from the binarised glyph crop during generation.",
+          "additionalProperties": false,
+          "required": ["ink_ratio"],
+          "properties": {
+            "ink_ratio": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "Fraction of pixels in the bounding box that are foreground (ink) in the binarised image. 0.0 = empty crop, 1.0 = entirely filled. Typical values for legible Hebrew glyphs are 0.10–0.60."
             }
           }
         },
