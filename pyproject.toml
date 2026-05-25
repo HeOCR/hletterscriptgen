@@ -79,6 +79,8 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B"]
+# reviewer.py uses Hebrew characters as intentional dict keys — RUF001 false positives.
+"src/hletterscriptgen/reviewer.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.11"

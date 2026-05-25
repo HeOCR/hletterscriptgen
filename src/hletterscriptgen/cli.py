@@ -132,6 +132,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format (default: json).",
     )
 
+    review_p = sub.add_parser(
+        "review",
+        help="Serve a local browser-based review UI for a letter_set.json file.",
+    )
+    review_p.add_argument(
+        "path",
+        type=Path,
+        help="Path to a letter_set.json file produced by 'generate'.",
+    )
+    review_p.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        metavar="N",
+        help="Local port to serve on (default: 8765).",
+    )
+    review_p.add_argument(
+        "--feedback",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help=(
+            "Path to the feedback JSON file (read on load, written on save). "
+            "Defaults to .review_feedback.json next to the letter-set file."
+        ),
+    )
+
     return parser
 
 
@@ -275,6 +302,17 @@ def _cmd_scan_blobs(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_review(args: argparse.Namespace) -> int:
+    from hletterscriptgen.reviewer import serve
+
+    try:
+        serve(args.path, port=args.port, feedback_path=args.feedback)
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    return EXIT_OK
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -291,5 +329,7 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_check_eligible(args)
     if args.command == "scan-blobs":
         return _cmd_scan_blobs(args)
+    if args.command == "review":
+        return _cmd_review(args)
 
     parser.error(f"unknown command: {args.command}")
