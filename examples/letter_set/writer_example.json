@@ -3,7 +3,7 @@
   "writer_id": "example-writer-0001",
   "writer_label": "Example Writer (fixture only — not a real person)",
   "writer_provenance": {
-    "source_repo": "HeOCR/public-domain-hand-written-hebrew-scans",
+    "source_repo": "HeOCR/hash",
     "source_entry_ids": ["example-scan-0001", "example-scan-0002"],
     "attribution_method": "fixture",
     "notes": "Fixture document used to validate the letter_set.v1 schema in CI. No real glyph images are referenced."
@@ -15,7 +15,7 @@
   },
   "generated_at": "2026-05-12T00:00:00Z",
   "upstream": {
-    "repo": "HeOCR/public-domain-hand-written-hebrew-scans",
+    "repo": "HeOCR/hash",
     "revision": "0000000000000000000000000000000000000000"
   },
   "letters": {

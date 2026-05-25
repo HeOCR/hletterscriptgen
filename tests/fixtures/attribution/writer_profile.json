@@ -1,5 +1,5 @@
 {
-  "upstream_path": "../public-domain-hand-written-hebrew-scans",
+  "upstream_path": "../hash",
   "writers": [
     {
       "writer_id": "writer_bialik",

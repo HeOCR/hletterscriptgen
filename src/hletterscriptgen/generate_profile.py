@@ -19,7 +19,7 @@ Typical workflow:
 Profile JSON shape::
 
     {
-      "upstream_checkout": "../public-domain-hand-written-hebrew-scans",
+      "upstream_checkout": "../hash",
       "writers": [
         {
           "writer_id": "writer_bialik",

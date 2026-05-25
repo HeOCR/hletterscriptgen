@@ -71,7 +71,7 @@ def test_roundtrip_parse_fixture() -> None:
     profile = load_attribution(PROFILE_PATH)
 
     assert isinstance(profile, WriterProfile)
-    assert profile.upstream_path == Path("../public-domain-hand-written-hebrew-scans")
+    assert profile.upstream_path == Path("../hash")
 
     writers_by_id = {w.writer_id: w for w in profile.writers}
     assert set(writers_by_id) == {"writer_bialik", "writer_herzl"}

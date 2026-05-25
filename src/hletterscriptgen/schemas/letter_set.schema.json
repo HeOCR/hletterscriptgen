@@ -37,7 +37,7 @@
         "source_repo": {
           "type": "string",
           "minLength": 1,
-          "description": "Upstream repository identifier, e.g. 'HeOCR/public-domain-hand-written-hebrew-scans'."
+          "description": "Upstream repository identifier, e.g. 'HeOCR/hash'."
         },
         "source_entry_ids": {
           "type": "array",
@@ -81,7 +81,7 @@
         "repo": {
           "type": "string",
           "minLength": 1,
-          "description": "Upstream repository identifier in 'owner/name' form, e.g. 'HeOCR/public-domain-hand-written-hebrew-scans'."
+          "description": "Upstream repository identifier in 'owner/name' form, e.g. 'HeOCR/hash'."
         },
         "revision": {
           "type": "string",

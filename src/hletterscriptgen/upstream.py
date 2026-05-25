@@ -1,7 +1,7 @@
-"""Upstream integration: read and filter ``public-domain-hand-written-hebrew-scans``.
+"""Upstream integration: read and filter ``HeOCR/hash`` (HASH).
 
 This module is read-only: it consumes a local checkout of the upstream
-scan corpus (``HeOCR/public-domain-hand-written-hebrew-scans``) and
+scan corpus (``HeOCR/hash``) and
 exposes the records the generator pipeline actually needs. The full
 upstream contract is broader than what is modelled here; see
 ``schemas/entry.schema.json`` in the upstream repo.
@@ -166,7 +166,7 @@ class UpstreamPin:
     """The ``(repo, revision)`` pair written to ``letter_set.v1.upstream``.
 
     ``repo`` is the ``owner/name`` form of the upstream remote (e.g.
-    ``"HeOCR/public-domain-hand-written-hebrew-scans"``). ``revision``
+    ``"HeOCR/hash"``). ``revision``
     is the full SHA of the pinned ``HEAD`` commit.
     """
 

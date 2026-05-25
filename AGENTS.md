@@ -26,7 +26,7 @@ hletterscriptgen validate examples/letter_set/writer_example.json --format json
   scans into per-writer letter-glyph image sets.
 - `hletterscript` (separate repo) owns the **published letter-set datasets**.
   Do not commit generated glyph images to this repo.
-- `public-domain-hand-written-hebrew-scans` (separate repo) owns
+- `hash` (separate repo) owns
   **upstream scans** and their rights records.
 - `hocrsyngen`, `hocrgen`, `HeOCR`, `HeOCRsynth` are downstream consumers.
   Do not import them from `hletterscriptgen` and do not build their
@@ -44,7 +44,7 @@ hletterscriptgen validate examples/letter_set/writer_example.json --format json
 ## Rights-carryover rules
 
 - Every variant must carry a `source.scan_entry_id` that resolves against
-  the upstream `public-domain-hand-written-hebrew-scans` index, plus a
+  the upstream `hash` index, plus a
   `source.license` matching the upstream record. The generator never
   invents, broadens, or relicenses upstream rights.
 - `license_summary.licenses` must include every distinct license that

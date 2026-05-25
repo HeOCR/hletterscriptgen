@@ -10,7 +10,7 @@
 ## Goal
 
 Turn rights-clean handwritten Hebrew page scans (upstream:
-`HeOCR/public-domain-hand-written-hebrew-scans`) into per-writer
+`HeOCR/hash`) into per-writer
 `letter_set.v1` documents plus their referenced glyph image assets.
 
 ## Sketch

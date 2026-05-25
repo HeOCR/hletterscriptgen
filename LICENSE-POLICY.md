@@ -16,7 +16,7 @@ rules apply to each layer.
 ## 2. Generated letter-set datasets
 
 The generator processes scans from
-[`HeOCR/public-domain-hand-written-hebrew-scans`](https://github.com/HeOCR/public-domain-hand-written-hebrew-scans).
+[`HeOCR/hash`](https://github.com/HeOCR/hash).
 That upstream repository uses a compound licensing model with rights recorded
 **per scan**. `hletterscriptgen` follows the same posture:
 

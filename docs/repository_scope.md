@@ -7,7 +7,7 @@ intentionally narrow.
 ## Position in the HeOCR system (canonical)
 
 ```
-public-domain-hand-written-hebrew-scans   (full-page scans, PD / CC / CC-BY)
+hash   (full-page scans, PD / CC / CC-BY)
         │
         ▼
 hletterscriptgen   (code/framework — this repo)
@@ -39,7 +39,7 @@ copy it — only one diagram should ever rot.
 
 | Concern | Where it lives |
 | --- | --- |
-| Hosting page scans and rights records | `HeOCR/public-domain-hand-written-hebrew-scans` |
+| Hosting page scans and rights records | `HeOCR/hash` |
 | Hosting per-writer letter-glyph datasets | `HeOCR/hletterscript` |
 | Composing synthetic Hebrew handwritten pages | `HeOCR/hocrsyngen` |
 | Dataset orchestration, governance, release assembly, publication | `HeOCR/hocrgen` |
