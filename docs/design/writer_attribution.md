@@ -19,7 +19,7 @@ the local upstream checkout and declares one or more writer blocks.
 
 ```json
 {
-  "upstream_path": "../public-domain-hand-written-hebrew-scans",
+  "upstream_path": "../hash",
   "writers": [
     {
       "writer_id": "writer_bialik",

@@ -7,7 +7,7 @@ Thanks for considering a contribution to `hletterscriptgen`.
 This repo holds the **code** that produces per-writer Hebrew letter-glyph
 image sets. It does **not** host the letter-set images themselves (those
 live in `HeOCR/hletterscript`), and it does **not** ingest upstream scans
-(those live in `HeOCR/public-domain-hand-written-hebrew-scans`). Please
+(those live in `HeOCR/hash`). Please
 keep PRs aligned with that boundary; cross-repo concerns belong upstream
 or downstream.
 

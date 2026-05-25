@@ -5,7 +5,7 @@ on rights-clean upstream scans of handwritten Hebrew documents.
 
 `hletterscriptgen` is part of the [HeOCR](https://github.com/HeOCR) project.
 It consumes scan-level records from
-[`HeOCR/public-domain-hand-written-hebrew-scans`](https://github.com/HeOCR/public-domain-hand-written-hebrew-scans)
+[`HeOCR/hash`](https://github.com/HeOCR/hash) (HASH — Hebrew Archive of Scanned Handwriting)
 and produces letter-set datasets that land in
 [`HeOCR/hletterscript`](https://github.com/HeOCR/hletterscript). Downstream,
 [`HeOCR/hocrsyngen`](https://github.com/HeOCR/hocrsyngen) composes those
@@ -34,7 +34,7 @@ What does **not** live here:
 
 - Actual extracted glyph images (→ `HeOCR/hletterscript`).
 - Page-scan ingestion or rights curation (→
-  `HeOCR/public-domain-hand-written-hebrew-scans`).
+  `HeOCR/hash`).
 - Document composition (→ `HeOCR/hocrsyngen`).
 - Dataset orchestration, governance, release assembly, or publication (→
   `HeOCR/hocrgen` / `HeOCR/HeOCR` / `HeOCR/HeOCRsynth`).
@@ -42,7 +42,7 @@ What does **not** live here:
 ## Position in the HeOCR system
 
 `hletterscriptgen` reads rights-clean scans from
-`public-domain-hand-written-hebrew-scans`, produces per-writer letter
+HASH (`HeOCR/hash`), produces per-writer letter
 sets that land in `hletterscript`, and ultimately feeds `hocrsyngen` /
 `hocrgen` / `HeOCR` / `HeOCRsynth`. See
 [`docs/repository_scope.md`](docs/repository_scope.md) for the full

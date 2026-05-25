@@ -1,7 +1,7 @@
 # Upstream integration
 
 `hletterscriptgen` consumes scans from
-[`HeOCR/public-domain-hand-written-hebrew-scans`](https://github.com/HeOCR/public-domain-hand-written-hebrew-scans).
+[`HeOCR/hash`](https://github.com/HeOCR/hash) — HASH (Hebrew Archive of Scanned Handwriting).
 That upstream repo holds the authoritative rights records; this repo
 defers to them.
 

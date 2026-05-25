@@ -64,7 +64,7 @@ def _make_upstream_checkout(tmp_path: Path) -> Path:
     _git(repo, "config", "user.email", "test@example.com")
     _git(repo, "config", "user.name", "Test")
     _git(repo, "config", "commit.gpgsign", "false")
-    _git(repo, "remote", "add", "origin", "https://github.com/HeOCR/public-domain-hand-written-hebrew-scans.git")
+    _git(repo, "remote", "add", "origin", "https://github.com/HeOCR/hash.git")
 
     # entries.jsonl
     index_dir = repo / "data" / "index"
@@ -156,7 +156,7 @@ def test_generate_letter_set_content(tmp_path: Path) -> None:
     doc = json.loads(paths[0].read_text(encoding="utf-8"))
     assert doc["schema_version"] == "letter_set.v1"
     assert doc["writer_id"] == "writer_test_a"
-    assert doc["upstream"]["repo"] == "HeOCR/public-domain-hand-written-hebrew-scans"
+    assert doc["upstream"]["repo"] == "HeOCR/hash"
     assert doc["generator"]["name"] == "hletterscriptgen"
     # Both annotated letters must appear
     assert "א" in doc["letters"]
@@ -324,7 +324,7 @@ def _make_upstream_checkout_no_cv2(tmp_path: Path) -> Path:
     _git(repo, "config", "user.email", "test@example.com")
     _git(repo, "config", "user.name", "Test")
     _git(repo, "config", "commit.gpgsign", "false")
-    _git(repo, "remote", "add", "origin", "https://github.com/HeOCR/public-domain-hand-written-hebrew-scans.git")
+    _git(repo, "remote", "add", "origin", "https://github.com/HeOCR/hash.git")
 
     index_dir = repo / "data" / "index"
     index_dir.mkdir(parents=True)
