@@ -19,16 +19,17 @@ path from Option A to Option B/C.
 
 ## Evidence from the upstream corpus
 
-Investigation target: `HeOCR/public-domain-hand-written-hebrew-scans` (GitHub, inspected via
-`gh api` — local clone not present at time of spike).
+Investigation target: `HeOCR/hash` — HASH (Hebrew Archive of Scanned Handwriting) (GitHub,
+inspected via `gh api` at spike time; corpus has grown considerably since).
 
 | Finding | Detail |
 |---------|--------|
-| Total entries in `data/index/entries.jsonl` | 60 |
-| `transcription.status` distribution | `"none"`: 60 / 60 |
-| Non-null `alto_path` | 0 / 60 |
-| Non-null `hocr_path` | 0 / 60 |
-| Non-null `text_path` | 0 / 60 |
+| Total entries in `data/index/entries.jsonl` (spike) | 60 |
+| Total entries (as of 2026-05) | 373 (111 sources, 48 unique creators) |
+| `transcription.status` distribution | `"none"`: all entries at spike time |
+| Non-null `alto_path` | 0 at spike time |
+| Non-null `hocr_path` | 0 at spike time |
+| Non-null `text_path` | 0 at spike time |
 | Unique `files[].role` values across all entries | `"original"` only |
 | Scan directories inspected (`data/scans/`) | `commons__begani_netatikha` (representative sample) — contains only the JPEG scan, no sidecars |
 
@@ -38,9 +39,9 @@ The file-role enum (`original`, `normalized`, `thumbnail`, `transcription`, `met
 `transcription` role, but zero entries exercise it.
 
 Source files consulted:
-- `HeOCR/public-domain-hand-written-hebrew-scans/schemas/entry.schema.json`
-- `HeOCR/public-domain-hand-written-hebrew-scans/data/index/entries.jsonl`
-- `HeOCR/public-domain-hand-written-hebrew-scans/data/scans/commons__begani_netatikha/`
+- `HeOCR/hash/schemas/entry.schema.json`
+- `HeOCR/hash/data/index/entries.jsonl`
+- `HeOCR/hash/data/scans/commons__begani_netatikha/`
 
 ---
 

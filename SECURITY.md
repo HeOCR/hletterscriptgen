@@ -33,7 +33,7 @@ please report it. Two paths, in preference order:
    privacy.
 
 For takedown of an upstream scan, report directly in
-[`HeOCR/public-domain-hand-written-hebrew-scans`](https://github.com/HeOCR/public-domain-hand-written-hebrew-scans);
+[`HeOCR/hash`](https://github.com/HeOCR/hash);
 once an upstream scan is removed or relicensed, regenerated letter
 sets must drop or update the affected variants.
 
@@ -52,7 +52,7 @@ In scope:
 
 Out of scope here (report to the relevant upstream / downstream repo):
 
-- Rights records on upstream scans — `HeOCR/public-domain-hand-written-hebrew-scans`.
+- Rights records on upstream scans — `HeOCR/hash`.
 - Published letter-set datasets — `HeOCR/hletterscript`.
 - Composed synthetic pages — `HeOCR/hocrsyngen`.
 - Release-level governance — `HeOCR/hocrgen`.

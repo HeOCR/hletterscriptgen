@@ -196,16 +196,16 @@ def _init_repo(path: Path, remote_url: str) -> str:
 
 def test_pin_returns_upstream_pin(tmp_path: Path) -> None:
     repo = tmp_path / "upstream"
-    rev = _init_repo(repo, "https://github.com/HeOCR/public-domain-hand-written-hebrew-scans.git")
+    rev = _init_repo(repo, "https://github.com/HeOCR/hash.git")
     assert upstream_pin_from_checkout(repo) == UpstreamPin(
-        repo="HeOCR/public-domain-hand-written-hebrew-scans",
+        repo="HeOCR/hash",
         revision=rev,
     )
 
 
 def test_pin_refuses_dirty_checkout(tmp_path: Path) -> None:
     repo = tmp_path / "upstream"
-    _init_repo(repo, "git@github.com:HeOCR/public-domain-hand-written-hebrew-scans.git")
+    _init_repo(repo, "git@github.com:HeOCR/hash.git")
     (repo / "README.md").write_text("dirty\n", encoding="utf-8")
     with pytest.raises(UpstreamCheckoutDirtyError):
         upstream_pin_from_checkout(repo)

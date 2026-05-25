@@ -24,7 +24,7 @@ is exercised by CI and must remain valid.
   },
   "generated_at": "2026-05-12T00:00:00Z",
   "upstream": {
-    "repo": "HeOCR/public-domain-hand-written-hebrew-scans",
+    "repo": "HeOCR/hash",
     "revision": "<git commit sha>"
   },
   "letters": {
@@ -58,7 +58,7 @@ labels only. If in doubt, omit.
 
 **Required.** Records how the writer identity was established and which
 upstream scan entries are attributed to them. `source_repo` is normally
-`HeOCR/public-domain-hand-written-hebrew-scans`; `source_entry_ids` are
+`HeOCR/hash`; `source_entry_ids` are
 the upstream `entries.jsonl` ids. `attribution_method` is a short tag
 (e.g. `collection_metadata`, `manual_review`, `fixture`).
 
@@ -115,7 +115,7 @@ A mapping from a single Hebrew letter character (base or final form,
 | `asset_path` | POSIX path relative to the letter-set root. No leading `/` (schema-enforced); no `..` segment (cross-field-enforced). |
 | `checksum_sha256` | Lowercase SHA-256 hex digest of the asset bytes. Real letter sets must use real checksums; the example fixture's all-zero/all-one digests are intentional placeholders. |
 | `image.{width_px,height_px,format}` | Image metadata. `format` ∈ `png`, `webp`, `tiff`. |
-| `source.scan_entry_id` | Upstream entry id (resolves in `public-domain-hand-written-hebrew-scans`). Cross-field validator checks it appears in `writer_provenance.source_entry_ids`. |
+| `source.scan_entry_id` | Upstream entry id (resolves in `hash`). Cross-field validator checks it appears in `writer_provenance.source_entry_ids`. |
 | `source.scan_url` | Optional URL pointer to the source scan. RFC 3986 URI; checked when format-checking is enabled. |
 | `source.license` | One of the accepted SPDX / `LicenseRef-*` identifiers (see `$defs.license_id` in the schema). Extending the allow-list requires a schema change. |
 | `source.rights_evidence` | Optional free-form note or URL with rights evidence. |
