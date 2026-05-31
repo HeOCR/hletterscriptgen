@@ -332,4 +332,4 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "review":
         return _cmd_review(args)
 
-    parser.error(f"unknown command: {args.command}")
+    raise AssertionError(f"unhandled command: {args.command}")

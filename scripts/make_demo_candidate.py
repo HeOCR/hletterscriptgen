@@ -24,12 +24,17 @@ import argparse
 import hashlib
 import json
 import struct
-import sys
 import zlib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = REPO_ROOT / "examples" / "demo_candidate"
+
+# Import version from the installed package so the fixture stays accurate.
+try:
+    from hletterscriptgen import __version__ as _VERSION
+except ImportError:
+    _VERSION = "unknown"
 
 # ---------------------------------------------------------------------------
 # Minimal stdlib-only PNG encoder
@@ -329,19 +334,20 @@ _DEMO_LETTERS: list[tuple[str, str, list[tuple[int, int]]]] = [
 
 
 # ---------------------------------------------------------------------------
-# Ink-ratio computation (mirrors extractor.compute_ink_ratio)
+# Ink-ratio computation
+#
+# extractor.compute_ink_ratio operates on an OpenCV numpy array, so it cannot
+# be called here (this script is intentionally stdlib-only).  The logic below
+# is equivalent for the grayscale PNGs produced by _png_from_pixels().
 # ---------------------------------------------------------------------------
 
 
 def _ink_ratio(png_bytes: bytes) -> float:
     """Parse a grayscale PNG and compute ink fraction (pixels < 128 / total)."""
-    import zlib as _zlib
-    import struct as _struct
-
     data = png_bytes
 
     def _read_chunk(pos: int) -> tuple[bytes, bytes, int]:
-        length = _struct.unpack_from(">I", data, pos)[0]
+        length = struct.unpack_from(">I", data, pos)[0]
         tag = data[pos + 4 : pos + 8]
         chunk_data = data[pos + 8 : pos + 8 + length]
         return tag, chunk_data, pos + 12 + length
@@ -349,7 +355,7 @@ def _ink_ratio(png_bytes: bytes) -> float:
     # Parse IHDR
     pos = 8  # skip signature
     tag, ihdr, pos = _read_chunk(pos)
-    width, height = _struct.unpack_from(">II", ihdr)
+    width, height = struct.unpack_from(">II", ihdr)
 
     # Collect IDAT chunks
     idat_raw = b""
@@ -360,7 +366,7 @@ def _ink_ratio(png_bytes: bytes) -> float:
         elif tag == b"IEND":
             break
 
-    raw = _zlib.decompress(idat_raw)
+    raw = zlib.decompress(idat_raw)
     # Each row: 1 filter byte + width bytes
     ink = 0
     total = width * height
@@ -387,7 +393,6 @@ def build_demo_candidate(out_dir: Path) -> Path:
     """
     writer_id = "demo_writer_0001"
     writer_dir = out_dir / writer_id
-    letters_dir = writer_dir / "letters"
 
     letters_dict: dict[str, list[dict]] = {}
 
@@ -425,7 +430,7 @@ def build_demo_candidate(out_dir: Path) -> Path:
                     "bbox_in_source": {"x": 50 + i * 12, "y": 80 + i * 8, "width": w, "height": h},
                 },
                 "extracted_at": "2026-05-25T00:00:00Z",
-                "notes": f"Synthetic demo glyph (variant {i}, {w}×{h}px).",
+                "notes": f"Synthetic demo glyph (variant {i}, {w}x{h}px).",
             })
 
         letters_dict[char] = variants
@@ -455,7 +460,7 @@ def build_demo_candidate(out_dir: Path) -> Path:
         },
         "generator": {
             "name": "hletterscriptgen",
-            "version": "0.1.0.dev0",
+            "version": _VERSION,
             "config_hash": "0" * 64,
         },
         "generated_at": "2026-05-25T00:00:00Z",

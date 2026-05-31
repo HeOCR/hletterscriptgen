@@ -22,15 +22,22 @@ resumed.
 
 from __future__ import annotations
 
-import base64
 import http.server
 import json
-import threading
 import webbrowser
+from html import escape as _esc
 from pathlib import Path
 from typing import Any
 
 _FEEDBACK_FILENAME = ".review_feedback.json"
+
+_MIME_MAP: dict[str, str] = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "webp": "image/webp",
+    "tiff": "image/tiff",
+}
 
 _LETTER_NAMES: dict[str, str] = {
     "א": "Alef",
@@ -266,9 +273,7 @@ function _applyVerdict(vid, verdict) {
 
   card.querySelectorAll('.verdict-btn').forEach(b => b.classList.remove('active'));
   if (verdict) {
-    const sel = verdict === 'accept' ? '.btn-accept'
-               : verdict === 'reject' ? '.btn-reject' : '.btn-changes';
-    const btn = card.querySelector(sel);
+    const btn = card.querySelector('.verdict-btn[data-verdict="' + verdict + '"]');
     if (btn) btn.classList.add('active');
   }
 
@@ -379,6 +384,18 @@ function showToast(msg, err=false) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 
+// --- Event delegation (replaces inline onclick/oninput) ---
+document.addEventListener('click', e => {
+  const vbtn = e.target.closest('.verdict-btn[data-vid]');
+  if (vbtn) { setVerdict(vbtn.dataset.vid, vbtn.dataset.verdict); return; }
+  const sbtn = e.target.closest('.save-btn[data-vid]');
+  if (sbtn) { saveCard(sbtn.dataset.vid); }
+});
+document.addEventListener('input', e => {
+  const box = e.target.closest('.comment-box[data-vid]');
+  if (box) markDirty(box.dataset.vid);
+});
+
 // --- Active sidebar highlight on scroll ---
 const _io = new IntersectionObserver(entries => {
   for (const e of entries) {
@@ -421,59 +438,65 @@ def _ink_quality(ink_ratio: float) -> tuple[str, str]:
     return "Dense", "quality-warn"
 
 
-def _img_data_uri(path: Path) -> str | None:
-    """Return a base64 data URI for the image, or None if the file is absent."""
-    if not path.exists():
-        return None
-    ext = path.suffix.lower().lstrip(".")
-    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
-            "webp": "image/webp", "tiff": "image/tiff"}.get(ext, "image/png")
-    data = base64.b64encode(path.read_bytes()).decode()
-    return f"data:{mime};base64,{data}"
+def _build_variant_card(
+    variant: dict[str, Any],
+    letter_char: str,
+    base_dir: Path,
+    images: dict[str, Path],
+) -> str:
+    """Build HTML for one variant card.
 
-
-def _build_variant_card(variant: dict[str, Any], letter_char: str, base_dir: Path) -> str:
+    Populates *images* with ``{variant_id: absolute_path}`` for variants whose
+    asset file exists; the HTTP handler serves them at ``/image/<variant_id>``.
+    """
     vid = variant["variant_id"]
-    asset_path = base_dir / variant["asset_path"]
-    uri = _img_data_uri(asset_path)
+    vid_attr = _esc(vid)
 
-    w = variant["image"]["width_px"]
-    h = variant["image"]["height_px"]
-    fmt = variant["image"]["format"]
-    ink_ratio: float = variant["quality"]["ink_ratio"]
+    try:
+        w = variant["image"]["width_px"]
+        h = variant["image"]["height_px"]
+        fmt = variant["image"]["format"]
+        ink_ratio: float = variant["quality"]["ink_ratio"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"Malformed variant {vid!r}: missing field {exc}") from exc
+
     q_label, q_cls = _ink_quality(ink_ratio)
 
     source = variant.get("source", {})
-    scan_id = source.get("scan_entry_id", "—")
-    lic = source.get("license", "—")
+    scan_id = _esc(str(source.get("scan_entry_id", "—")))
+    lic = _esc(str(source.get("license", "—")))
     bbox = source.get("bbox_in_source", {})
     bbox_str = (
         f"x={bbox.get('x')}, y={bbox.get('y')}, "
         f"w={bbox.get('width')}, h={bbox.get('height')}"
-        if bbox else "—"
+        if bbox
+        else "—"
     )
-    letter_name = _LETTER_NAMES.get(letter_char, letter_char)
+    letter_name = _esc(_LETTER_NAMES.get(letter_char, letter_char))
 
-    img_html = (
-        f'<img src="{uri}" alt="{letter_char}" class="glyph-img" '
-        f'title="Original: {w}\xd7{h} px">'
-        if uri else
-        '<div class="glyph-missing">Image not found</div>'
-    )
+    asset_path = base_dir / variant["asset_path"]
+    if asset_path.exists():
+        images[vid] = asset_path
+        img_html = (
+            f'<img src="/image/{vid_attr}" alt="{_esc(letter_char)}" class="glyph-img" '
+            f'title="Original: {w}\xd7{h} px">'
+        )
+    else:
+        img_html = '<div class="glyph-missing">Image not found</div>'
 
     return (
-        f'<div class="variant-card" id="card-{vid}" data-variant-id="{vid}">\n'
+        f'<div class="variant-card" id="card-{vid_attr}" data-variant-id="{vid_attr}">\n'
         f'  <div class="card-header">\n'
-        f'    <span class="card-id">{vid}</span>\n'
-        f'    <span class="card-letter">{letter_char} {letter_name}</span>\n'
+        f'    <span class="card-id">{vid_attr}</span>\n'
+        f'    <span class="card-letter">{_esc(letter_char)} {letter_name}</span>\n'
         f'    <span class="quality-badge {q_cls}">{q_label} ({ink_ratio:.2f})</span>\n'
-        f'    <span class="verdict-badge" id="verdict-badge-{vid}"></span>\n'
+        f'    <span class="verdict-badge" id="verdict-badge-{vid_attr}"></span>\n'
         f'  </div>\n'
         f'  <div class="card-body">\n'
         f'    <div class="card-image">{img_html}'
         f'      <div class="image-dims">{w}\xd7{h}&thinsp;px</div></div>\n'
         f'    <div class="card-meta"><table class="meta-table">\n'
-        f'      <tr><th>Format</th><td>{fmt}</td></tr>\n'
+        f'      <tr><th>Format</th><td>{_esc(str(fmt))}</td></tr>\n'
         f'      <tr><th>Size</th><td>{w}\xd7{h}&thinsp;px</td></tr>\n'
         f'      <tr><th>Ink ratio</th><td>{ink_ratio:.3f}</td></tr>\n'
         f'      <tr><th>Source</th><td><code>{scan_id}</code></td></tr>\n'
@@ -483,19 +506,21 @@ def _build_variant_card(variant: dict[str, Any], letter_char: str, base_dir: Pat
         f'    <div class="card-review">\n'
         f'      <div class="verdict-btns">\n'
         f'        <button class="verdict-btn btn-accept"'
-        f' onclick="setVerdict(\'{vid}\',\'accept\')" title="Accept">&#x2705; Accept</button>\n'
+        f' data-vid="{vid_attr}" data-verdict="accept"'
+        f' title="Accept">&#x2705; Accept</button>\n'
         f'        <button class="verdict-btn btn-reject"'
-        f' onclick="setVerdict(\'{vid}\',\'reject\')" title="Reject">&#x274c; Reject</button>\n'
+        f' data-vid="{vid_attr}" data-verdict="reject"'
+        f' title="Reject">&#x274c; Reject</button>\n'
         f'        <button class="verdict-btn btn-changes"'
-        f' onclick="setVerdict(\'{vid}\',\'changes\')" title="Request changes">'
-        f'&#x1f504; Changes</button>\n'
+        f' data-vid="{vid_attr}" data-verdict="changes"'
+        f' title="Request changes">&#x1f504; Changes</button>\n'
         f'      </div>\n'
-        f'      <textarea id="comment-{vid}" class="comment-box" rows="2"'
-        f' placeholder="Optional comment…"'
-        f' oninput="markDirty(\'{vid}\')"></textarea>\n'
+        f'      <textarea id="comment-{vid_attr}" class="comment-box" rows="2"'
+        f' data-vid="{vid_attr}"'
+        f' placeholder="Optional comment…"></textarea>\n'
         f'      <div class="card-actions">\n'
-        f'        <button class="save-btn" onclick="saveCard(\'{vid}\')">Save</button>\n'
-        f'        <span class="saved-ok" id="saved-{vid}"></span>\n'
+        f'        <button class="save-btn" data-vid="{vid_attr}">Save</button>\n'
+        f'        <span class="saved-ok" id="saved-{vid_attr}"></span>\n'
         f'      </div>\n'
         f'    </div>\n'
         f'  </div>\n'
@@ -512,9 +537,9 @@ def _build_sidebar(letter_set: dict[str, Any]) -> str:
         dots = "".join('<span class="dot"></span>' for _ in variants)
         parts.append(
             f'<a class="letter-nav-item" href="#letter-{anchor}"'
-            f' data-letter="{char}">'
-            f'<span class="lni-char">{char}</span>'
-            f'<span class="lni-name">{name}</span>'
+            f' data-letter="{_esc(char)}">'
+            f'<span class="lni-char">{_esc(char)}</span>'
+            f'<span class="lni-name">{_esc(name)}</span>'
             f'<span class="lni-count">{count}</span>'
             f'<span class="lni-dots">{dots}</span>'
             f'</a>'
@@ -522,34 +547,41 @@ def _build_sidebar(letter_set: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def _build_sections(letter_set: dict[str, Any], base_dir: Path) -> tuple[str, list[str]]:
-    """Return (sections_html, all_variant_ids)."""
+def _build_sections(
+    letter_set: dict[str, Any], base_dir: Path
+) -> tuple[str, list[str], dict[str, Path]]:
+    """Return (sections_html, all_variant_ids, images_map).
+
+    *images_map* maps variant_id → absolute asset path for every variant whose
+    file exists on disk; used by the HTTP handler to serve ``/image/<vid>``.
+    """
     sections: list[str] = []
     all_ids: list[str] = []
+    images: dict[str, Path] = {}
 
     for char, variants in letter_set.get("letters", {}).items():
         name = _LETTER_NAMES.get(char, char)
         anchor = _letter_anchor(char)
         n = len(variants)
         s_label = "variant" if n == 1 else "variants"
-        cards = "".join(_build_variant_card(v, char, base_dir) for v in variants)
+        cards = "".join(_build_variant_card(v, char, base_dir, images) for v in variants)
         all_ids.extend(v["variant_id"] for v in variants)
         sections.append(
             f'<section class="letter-section" id="letter-{anchor}">\n'
             f'  <h2 class="letter-section-header">'
-            f'<span class="lsh-char">{char}</span>'
-            f'<span class="lsh-name">{name}</span>'
+            f'<span class="lsh-char">{_esc(char)}</span>'
+            f'<span class="lsh-name">{_esc(name)}</span>'
             f'<span class="lsh-count">{n} {s_label}</span>'
             f'</h2>\n{cards}</section>\n'
         )
-    return "".join(sections), all_ids
+    return "".join(sections), all_ids, images
 
 
 def _build_html(
     letter_set: dict[str, Any],
     base_dir: Path,
-    feedback_path: Path,
-) -> str:
+) -> tuple[str, dict[str, Path]]:
+    """Build the review page HTML and return ``(html_str, images_map)``."""
     writer_id = letter_set.get("writer_id", "")
     writer_label = letter_set.get("writer_label", "")
     generated_at = letter_set.get("generated_at", "")
@@ -559,14 +591,16 @@ def _build_html(
     total = sum(len(v) for v in letters.values())
 
     sidebar_html = _build_sidebar(letter_set)
-    sections_html, all_ids = _build_sections(letter_set, base_dir)
+    sections_html, all_ids, images = _build_sections(letter_set, base_dir)
 
     script = _SCRIPT.replace("__ALL_IDS__", json.dumps(all_ids))
 
-    label_line = f'<div class="subtitle">{writer_label}</div>\n' if writer_label else ""
-    title_esc = writer_id.replace("<", "&lt;").replace(">", "&gt;")
+    label_line = (
+        f'<div class="subtitle">{_esc(writer_label)}</div>\n' if writer_label else ""
+    )
+    title_esc = _esc(writer_id)
 
-    return (
+    html_str = (
         "<!DOCTYPE html>\n"
         '<html lang="en">\n<head>\n'
         '<meta charset="UTF-8">\n'
@@ -576,7 +610,7 @@ def _build_html(
         "</head>\n<body>\n"
         '<header class="top-header">\n'
         "  <div>\n"
-        f'    <h1>\U0001f50c Review — {writer_id}</h1>\n'
+        f'    <h1>\U0001f50c Review — {title_esc}</h1>\n'
         f"    {label_line}"
         f'    <div class="subtitle">Generated: {date_str}'
         f" &middot; {total} variant{'s' if total != 1 else ''}</div>\n"
@@ -607,6 +641,7 @@ def _build_html(
         f"<script>{script}</script>\n"
         "</body>\n</html>\n"
     )
+    return html_str, images
 
 
 # ---------------------------------------------------------------------------
@@ -615,10 +650,16 @@ def _build_html(
 
 
 class _ReviewHandler(http.server.BaseHTTPRequestHandler):
-    """Minimal handler: serves pre-built HTML and manages feedback JSON."""
+    """Minimal handler: serves pre-built HTML, images, and manages feedback JSON.
 
-    _html: str = ""
-    _feedback_path: Path = Path(_FEEDBACK_FILENAME)
+    Concrete values for ``_html``, ``_feedback_path``, and ``_images`` must be
+    provided by a subclass (``serve()`` creates one per invocation to avoid
+    shared class-level state).
+    """
+
+    _html: str
+    _feedback_path: Path
+    _images: dict[str, Path]
 
     def log_message(self, fmt: str, *args: object) -> None:  # silence request log
         pass
@@ -631,6 +672,7 @@ class _ReviewHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
         elif self.path == "/feedback":
             data: dict[str, Any] = {}
             fp = self._feedback_path
@@ -645,13 +687,31 @@ class _ReviewHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        elif self.path.startswith("/image/"):
+            # Strip query string / fragment; dict lookup prevents path traversal.
+            vid = self.path[len("/image/"):].split("?")[0].split("#")[0]
+            img_path = self._images.get(vid)
+            if img_path is None or not img_path.exists():
+                self.send_response(404)
+                self.end_headers()
+                return
+            ext = img_path.suffix.lower().lstrip(".")
+            mime = _MIME_MAP.get(ext, "image/png")
+            body = img_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         else:
             self.send_response(404)
             self.end_headers()
 
     def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
         if self.path == "/feedback":
-            length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length)
             try:
                 data = json.loads(raw.decode("utf-8"))
@@ -659,13 +719,19 @@ class _ReviewHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(400)
                 self.end_headers()
                 return
-            self._feedback_path.write_text(
+            # Atomic write: write to a sibling .tmp file then replace().
+            # Prevents a corrupt feedback file if the process is killed mid-write.
+            tmp = self._feedback_path.with_suffix(".tmp")
+            tmp.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
                 encoding="utf-8",
             )
+            tmp.replace(self._feedback_path)
             self.send_response(204)
             self.end_headers()
         else:
+            if length > 0:
+                self.rfile.read(length)  # drain body before responding to avoid TCP RST
             self.send_response(404)
             self.end_headers()
 
@@ -706,13 +772,16 @@ def serve(
     except json.JSONDecodeError as exc:
         raise ValueError(f"letter_set file is not valid JSON: {exc}") from exc
 
-    html = _build_html(letter_set, base_dir, feedback_path)
+    html_str, images = _build_html(letter_set, base_dir)
 
-    # Patch the handler class attributes (one server instance at a time).
-    _ReviewHandler._html = html
-    _ReviewHandler._feedback_path = feedback_path
+    # Create a fresh handler subclass per invocation so each server has its own
+    # isolated state rather than mutating shared class attributes.
+    class _Handler(_ReviewHandler):
+        _html = html_str
+        _feedback_path = feedback_path  # type: ignore[assignment]
+        _images = images
 
-    server = http.server.HTTPServer(("127.0.0.1", port), _ReviewHandler)
+    server = http.server.HTTPServer(("127.0.0.1", port), _Handler)
     url = f"http://localhost:{port}/"
     writer_id = letter_set.get("writer_id", path.name)
     total = sum(len(v) for v in letter_set.get("letters", {}).values())
@@ -723,7 +792,9 @@ def serve(
     print("Press Ctrl-C to stop.")
     print()
 
-    threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    # The socket is bound and listening after HTTPServer.__init__(), so the
+    # browser can connect immediately without a timing delay.
+    webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

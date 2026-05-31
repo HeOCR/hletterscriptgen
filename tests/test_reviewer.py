@@ -18,7 +18,6 @@ from hletterscriptgen.reviewer import (
     _build_sections,
     _build_sidebar,
     _build_variant_card,
-    _img_data_uri,
     _ink_quality,
     _letter_anchor,
     _ReviewHandler,
@@ -78,6 +77,27 @@ def _make_letter_set(
     }
 
 
+def _start_one_shot_server(
+    html: str,
+    feedback_path: Path,
+    images: dict[str, Path] | None = None,
+) -> tuple[int, HTTPServer]:
+    """Start an HTTPServer bound to a free port; return (port, server).
+
+    Creates a fresh _ReviewHandler subclass per call so tests are isolated —
+    no shared class-level state between invocations.
+    """
+    class _TestHandler(_ReviewHandler):
+        pass
+
+    _TestHandler._html = html
+    _TestHandler._feedback_path = feedback_path
+    _TestHandler._images = images if images is not None else {}
+
+    srv = HTTPServer(("127.0.0.1", 0), _TestHandler)
+    return srv.server_address[1], srv
+
+
 # ---------------------------------------------------------------------------
 # _letter_anchor
 # ---------------------------------------------------------------------------
@@ -131,42 +151,6 @@ def test_ink_quality_dense() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _img_data_uri
-# ---------------------------------------------------------------------------
-
-
-def test_img_data_uri_returns_none_for_missing_file(tmp_path: Path) -> None:
-    result = _img_data_uri(tmp_path / "nonexistent.png")
-    assert result is None
-
-
-def test_img_data_uri_encodes_png(tmp_path: Path) -> None:
-    png_path = tmp_path / "test.png"
-    png_bytes = _minimal_png()
-    png_path.write_bytes(png_bytes)
-    uri = _img_data_uri(png_path)
-    assert uri is not None
-    assert uri.startswith("data:image/png;base64,")
-
-
-def test_img_data_uri_encodes_jpeg(tmp_path: Path) -> None:
-    # Minimal JPEG placeholder (just needs to be readable bytes)
-    jpg_path = tmp_path / "test.jpg"
-    jpg_path.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
-    uri = _img_data_uri(jpg_path)
-    assert uri is not None
-    assert uri.startswith("data:image/jpeg;base64,")
-
-
-def test_img_data_uri_fallback_mime_for_unknown_ext(tmp_path: Path) -> None:
-    weird = tmp_path / "test.xyz"
-    weird.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40)
-    uri = _img_data_uri(weird)
-    assert uri is not None
-    assert "image/png" in uri  # default MIME
-
-
-# ---------------------------------------------------------------------------
 # _build_variant_card
 # ---------------------------------------------------------------------------
 
@@ -184,9 +168,10 @@ def test_variant_card_contains_variant_id(tmp_path: Path) -> None:
             "bbox_in_source": {"x": 5, "y": 10, "width": 30, "height": 40},
         },
     }
-    html = _build_variant_card(variant, "א", tmp_path)
+    images: dict[str, Path] = {}
+    html = _build_variant_card(variant, "א", tmp_path, images)
     assert "alef-0042" in html
-    assert "id=\"card-alef-0042\"" in html
+    assert 'id="card-alef-0042"' in html
 
 
 def test_variant_card_missing_image_shows_fallback(tmp_path: Path) -> None:
@@ -202,12 +187,14 @@ def test_variant_card_missing_image_shows_fallback(tmp_path: Path) -> None:
             "bbox_in_source": {"x": 5, "y": 10, "width": 30, "height": 40},
         },
     }
-    html = _build_variant_card(variant, "א", tmp_path)
+    images: dict[str, Path] = {}
+    html = _build_variant_card(variant, "א", tmp_path, images)
     assert "glyph-missing" in html
     assert "<img" not in html
+    assert "alef-0001" not in images
 
 
-def test_variant_card_with_image_shows_img_tag(tmp_path: Path) -> None:
+def test_variant_card_with_image_shows_img_endpoint(tmp_path: Path) -> None:
     png_path = tmp_path / "letters" / "alef"
     png_path.mkdir(parents=True)
     (png_path / "alef-0001.png").write_bytes(_minimal_png())
@@ -224,9 +211,12 @@ def test_variant_card_with_image_shows_img_tag(tmp_path: Path) -> None:
             "bbox_in_source": {"x": 5, "y": 10, "width": 4, "height": 4},
         },
     }
-    html = _build_variant_card(variant, "א", tmp_path)
+    images: dict[str, Path] = {}
+    html = _build_variant_card(variant, "א", tmp_path, images)
     assert '<img' in html
-    assert "data:image/png;base64," in html
+    assert 'src="/image/alef-0001"' in html
+    assert "data:image" not in html
+    assert "alef-0001" in images
 
 
 def test_variant_card_quality_badge_class(tmp_path: Path) -> None:
@@ -240,8 +230,37 @@ def test_variant_card_quality_badge_class(tmp_path: Path) -> None:
         "source": {"scan_entry_id": "s", "license": "PDM-1.0",
                    "bbox_in_source": {"x": 0, "y": 0, "width": 10, "height": 10}},
     }
-    html = _build_variant_card(variant, "ב", tmp_path)
+    images: dict[str, Path] = {}
+    html = _build_variant_card(variant, "ב", tmp_path, images)
     assert "quality-warn" in html
+
+
+def test_variant_card_uses_data_attributes_not_inline_handlers(tmp_path: Path) -> None:
+    variant: dict[str, Any] = {
+        "variant_id": "alef-0001",
+        "asset_path": "x.png",
+        "checksum_sha256": "a" * 64,
+        "image": {"width_px": 10, "height_px": 10, "format": "png"},
+        "quality": {"ink_ratio": 0.25},
+        "source": {"scan_entry_id": "s", "license": "PDM-1.0",
+                   "bbox_in_source": {"x": 0, "y": 0, "width": 10, "height": 10}},
+    }
+    images: dict[str, Path] = {}
+    html = _build_variant_card(variant, "א", tmp_path, images)
+    assert 'onclick=' not in html
+    assert 'oninput=' not in html
+    assert 'data-vid=' in html
+    assert 'data-verdict=' in html
+
+
+def test_variant_card_malformed_variant_raises(tmp_path: Path) -> None:
+    bad: dict[str, Any] = {
+        "variant_id": "v1",
+        "asset_path": "x.png",
+        # missing "image" and "quality"
+    }
+    with pytest.raises(ValueError, match="Malformed variant"):
+        _build_variant_card(bad, "א", tmp_path, {})
 
 
 # ---------------------------------------------------------------------------
@@ -284,14 +303,29 @@ def test_build_sidebar_empty_letters() -> None:
 
 def test_build_sections_returns_all_ids(tmp_path: Path) -> None:
     ls = _make_letter_set()
-    _, ids = _build_sections(ls, tmp_path)
+    _, ids, _ = _build_sections(ls, tmp_path)
     assert ids == ["alef-0001"]
 
 
 def test_build_sections_html_contains_section_id(tmp_path: Path) -> None:
     ls = _make_letter_set()
-    html, _ = _build_sections(ls, tmp_path)
+    html, _, _ = _build_sections(ls, tmp_path)
     assert 'id="letter-u05d0"' in html
+
+
+def test_build_sections_images_map_populated_when_file_exists(tmp_path: Path) -> None:
+    png_dir = tmp_path / "letters" / "alef"
+    png_dir.mkdir(parents=True)
+    (png_dir / "alef-0001.png").write_bytes(_minimal_png())
+    ls = _make_letter_set()
+    _, _, images = _build_sections(ls, tmp_path)
+    assert "alef-0001" in images
+
+
+def test_build_sections_images_map_empty_when_file_missing(tmp_path: Path) -> None:
+    ls = _make_letter_set()  # asset file does not exist in tmp_path
+    _, _, images = _build_sections(ls, tmp_path)
+    assert images == {}
 
 
 # ---------------------------------------------------------------------------
@@ -301,38 +335,46 @@ def test_build_sections_html_contains_section_id(tmp_path: Path) -> None:
 
 def test_build_html_contains_writer_id(tmp_path: Path) -> None:
     ls = _make_letter_set(writer_id="my-writer-007")
-    html = _build_html(ls, tmp_path, tmp_path / ".feedback.json")
+    html, _ = _build_html(ls, tmp_path)
     assert "my-writer-007" in html
 
 
 def test_build_html_contains_progress_elements(tmp_path: Path) -> None:
     ls = _make_letter_set()
-    html = _build_html(ls, tmp_path, tmp_path / ".feedback.json")
+    html, _ = _build_html(ls, tmp_path)
     assert "progress-fill" in html
     assert "progress-label" in html
 
 
 def test_build_html_embeds_all_ids_in_script(tmp_path: Path) -> None:
     ls = _make_letter_set()
-    html = _build_html(ls, tmp_path, tmp_path / ".feedback.json")
+    html, _ = _build_html(ls, tmp_path)
     assert '"alef-0001"' in html  # variant_id appears in the JS ALL_IDS array
 
 
 def test_build_html_no_writer_label_skips_label_div(tmp_path: Path) -> None:
     ls = _make_letter_set()
     del ls["writer_label"]
-    html = _build_html(ls, tmp_path, tmp_path / ".feedback.json")
-    # The <div class="subtitle">...</div> label line should not appear
+    html, _ = _build_html(ls, tmp_path)
     assert "Test Writer" not in html
 
 
 def test_build_html_is_valid_html_scaffold(tmp_path: Path) -> None:
     ls = _make_letter_set()
-    html = _build_html(ls, tmp_path, tmp_path / ".feedback.json")
+    html, _ = _build_html(ls, tmp_path)
     assert html.startswith("<!DOCTYPE html>")
     assert "</html>" in html
     assert "<style>" in html
     assert "<script>" in html
+
+
+def test_build_html_returns_images_map(tmp_path: Path) -> None:
+    png_dir = tmp_path / "letters" / "alef"
+    png_dir.mkdir(parents=True)
+    (png_dir / "alef-0001.png").write_bytes(_minimal_png())
+    ls = _make_letter_set()
+    _, images = _build_html(ls, tmp_path)
+    assert "alef-0001" in images
 
 
 # ---------------------------------------------------------------------------
@@ -340,21 +382,10 @@ def test_build_html_is_valid_html_scaffold(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _start_one_shot_server(html: str, feedback_path: Path) -> tuple[int, HTTPServer]:
-    """Start an HTTPServer bound to a free port; return (port, server)."""
-    _ReviewHandler._html = html
-    _ReviewHandler._feedback_path = feedback_path
-    srv = HTTPServer(("127.0.0.1", 0), _ReviewHandler)
-    return srv.server_address[1], srv
-
-
 def test_handler_get_root_returns_html(tmp_path: Path) -> None:
     port, srv = _start_one_shot_server("<html>hello</html>", tmp_path / "fb.json")
 
-    def _handle_once() -> None:
-        srv.handle_request()
-
-    t = threading.Thread(target=_handle_once)
+    t = threading.Thread(target=srv.handle_request)
     t.start()
 
     conn = http.client.HTTPConnection("127.0.0.1", port)
@@ -418,6 +449,26 @@ def test_handler_post_feedback_saves_json(tmp_path: Path) -> None:
     assert saved["v2"]["verdict"] == "reject"
 
 
+def test_handler_post_feedback_write_is_atomic(tmp_path: Path) -> None:
+    """POST should not leave a .tmp file behind after a successful save."""
+    fb_path = tmp_path / "fb.json"
+    port, srv = _start_one_shot_server("", fb_path)
+    payload = json.dumps({"v1": {"verdict": "accept"}}).encode()
+    t = threading.Thread(target=srv.handle_request)
+    t.start()
+    conn = http.client.HTTPConnection("127.0.0.1", port)
+    conn.request("POST", "/feedback", body=payload,
+                 headers={"Content-Type": "application/json",
+                          "Content-Length": str(len(payload))})
+    resp = conn.getresponse()
+    resp.read()
+    conn.close()
+    t.join()
+    assert resp.status == 204
+    assert fb_path.exists()
+    assert not fb_path.with_suffix(".tmp").exists()
+
+
 def test_handler_post_feedback_invalid_json_returns_400(tmp_path: Path) -> None:
     fb_path = tmp_path / "fb.json"
     port, srv = _start_one_shot_server("", fb_path)
@@ -475,6 +526,39 @@ def test_handler_feedback_file_with_invalid_json_returns_empty(tmp_path: Path) -
     conn.close()
     t.join()
     assert data == {}
+
+
+def test_handler_get_image_returns_png(tmp_path: Path) -> None:
+    png_bytes = _minimal_png()
+    img_path = tmp_path / "alef-0001.png"
+    img_path.write_bytes(png_bytes)
+
+    port, srv = _start_one_shot_server("", tmp_path / "fb.json",
+                                       images={"alef-0001": img_path})
+    t = threading.Thread(target=srv.handle_request)
+    t.start()
+    conn = http.client.HTTPConnection("127.0.0.1", port)
+    conn.request("GET", "/image/alef-0001")
+    resp = conn.getresponse()
+    body = resp.read()
+    conn.close()
+    t.join()
+    assert resp.status == 200
+    assert resp.getheader("Content-Type") == "image/png"
+    assert body == png_bytes
+
+
+def test_handler_get_image_unknown_vid_returns_404(tmp_path: Path) -> None:
+    port, srv = _start_one_shot_server("", tmp_path / "fb.json", images={})
+    t = threading.Thread(target=srv.handle_request)
+    t.start()
+    conn = http.client.HTTPConnection("127.0.0.1", port)
+    conn.request("GET", "/image/no-such-variant")
+    resp = conn.getresponse()
+    resp.read()
+    conn.close()
+    t.join()
+    assert resp.status == 404
 
 
 # ---------------------------------------------------------------------------
