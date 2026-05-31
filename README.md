@@ -1,52 +1,73 @@
 # hletterscriptgen
 
-Generator framework for **per-writer Hebrew letter-glyph image sets**, built
-on rights-clean upstream scans of handwritten Hebrew documents.
+[![CI](https://github.com/HeOCR/hletterscriptgen/actions/workflows/ci.yml/badge.svg)](https://github.com/HeOCR/hletterscriptgen/actions/workflows/ci.yml)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Schema](https://img.shields.io/badge/schema-letter__set.v1-blue)
 
-`hletterscriptgen` is part of the [HeOCR](https://github.com/HeOCR) project.
-It consumes scan-level records from
-[`HeOCR/hash`](https://github.com/HeOCR/hash) (HASH — Hebrew Archive of Scanned Handwriting)
-and produces letter-set datasets that land in
-[`HeOCR/hletterscript`](https://github.com/HeOCR/hletterscript). Downstream,
-[`HeOCR/hocrsyngen`](https://github.com/HeOCR/hocrsyngen) composes those
-glyphs into synthetic Hebrew handwritten pages, which
-[`HeOCR/hocrgen`](https://github.com/HeOCR/hocrgen) folds into
-[`HeOCR/HeOCR`](https://github.com/HeOCR/HeOCR) and
-[`HeOCR/HeOCRsynth`](https://github.com/HeOCR/HeOCRsynth).
+Created by [Shay Palachy Affek](http://www.shaypalachy.com/).
 
-## Repository scope
+Generator framework for per-writer Hebrew handwritten letter-glyph image
+sets. It turns rights-clean HASH scan records plus human-reviewed glyph
+annotations into deterministic `letter_set.v1` outputs for
+[`HeOCR/hletterscript`](https://github.com/HeOCR/hletterscript).
 
-This repository contains the **code, schemas, and contracts** that produce
-letter sets. It does **not** host the letter-set image data; that lives in
-`HeOCR/hletterscript`.
+![hletterscriptgen output contract diagram](docs/assets/hletterscriptgen-output-contract.png)
+
+## At a Glance
+
+| Field | Value |
+| --- | --- |
+| Role | Generate and validate per-writer Hebrew letter-set outputs |
+| Input | HASH scan metadata, scan image files, and generation profiles |
+| Output | `letter_set.v1` JSON plus cropped glyph PNG assets |
+| Public contract | [`docs/letter_set_v1.md`](docs/letter_set_v1.md) |
+| Example fixture | [`examples/letter_set/writer_example.json`](examples/letter_set/writer_example.json) |
+| Main CLI | `hletterscriptgen` |
+| Code license | MIT |
+| Generated glyph rights | Per-variant rights inherited from upstream scans |
+
+## What This Repository Owns
+
+This repository contains the Python package, CLI, schema, and validation
+contracts for creating writer-level Hebrew letter sets. It does not host
+the published glyph dataset itself; generated and curated data belongs in
+[`HeOCR/hletterscript`](https://github.com/HeOCR/hletterscript).
 
 What lives here:
 
-- A Python package and CLI (`hletterscriptgen`).
-- The `letter_set.v1` JSON Schema and a fixture example
-  (`examples/letter_set/writer_example.json`).
-- Validation tooling (`hletterscriptgen validate`).
-- CI that enforces schema and tooling invariants.
-- Licensing policy and rights-carryover rules
-  ([`LICENSE-POLICY.md`](LICENSE-POLICY.md)).
+- `hletterscriptgen`, the Python package and command-line interface.
+- The `letter_set.v1` JSON Schema and fixture example.
+- Generation-profile parsing, upstream eligibility checks, glyph
+  extraction helpers, checksum calculation, and output validation.
+- CI, release workflow, and rights-carryover policy.
 
-What does **not** live here:
+What lives elsewhere:
 
-- Actual extracted glyph images (→ `HeOCR/hletterscript`).
-- Page-scan ingestion or rights curation (→
-  `HeOCR/hash`).
-- Document composition (→ `HeOCR/hocrsyngen`).
-- Dataset orchestration, governance, release assembly, or publication (→
-  `HeOCR/hocrgen` / `HeOCR/HeOCR` / `HeOCR/HeOCRsynth`).
+- Page-scan ingestion and rights curation:
+  [`HeOCR/hash`](https://github.com/HeOCR/hash).
+- Published letter-glyph image sets:
+  [`HeOCR/hletterscript`](https://github.com/HeOCR/hletterscript).
+- Synthetic document composition:
+  [`HeOCR/hocrsyngen`](https://github.com/HeOCR/hocrsyngen).
+- Dataset orchestration and release assembly:
+  [`HeOCR/hocrgen`](https://github.com/HeOCR/hocrgen),
+  [`HeOCR/HeOCR`](https://github.com/HeOCR/HeOCR), and
+  [`HeOCR/HeOCRsynth`](https://github.com/HeOCR/HeOCRsynth).
 
-## Position in the HeOCR system
+## Pipeline Position
 
-`hletterscriptgen` reads rights-clean scans from
-HASH (`HeOCR/hash`), produces per-writer letter
-sets that land in `hletterscript`, and ultimately feeds `hocrsyngen` /
-`hocrgen` / `HeOCR` / `HeOCRsynth`. See
-[`docs/repository_scope.md`](docs/repository_scope.md) for the full
-diagram and per-repo responsibilities.
+```mermaid
+flowchart LR
+    HASH["HeOCR/hash<br/>rights-clean scans"] --> PROFILE["generation profile<br/>writer + glyph bboxes"]
+    PROFILE --> GEN["hletterscriptgen<br/>crop, hash, dedupe, validate"]
+    GEN --> DATA["HeOCR/hletterscript<br/>letter_set.v1 + glyph PNGs"]
+    DATA --> SYN["HeOCR/hocrsyngen<br/>synthetic pages"]
+    SYN --> OCR["HeOCR / HeOCRsynth<br/>OCR and HTR datasets"]
+```
+
+See [`docs/repository_scope.md`](docs/repository_scope.md) for the full
+ecosystem boundary map and per-repository responsibilities.
 
 ## Install
 
@@ -54,7 +75,13 @@ diagram and per-repo responsibilities.
 python -m pip install -e ".[test]"
 ```
 
-Requires Python 3.11+.
+For development:
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+Requires Python 3.11 or newer.
 
 ## CLI
 
@@ -62,34 +89,53 @@ Requires Python 3.11+.
 hletterscriptgen version
 hletterscriptgen schema --format json
 hletterscriptgen validate examples/letter_set/writer_example.json
-hletterscriptgen validate examples/letter_set/writer_example.json --format json
+hletterscriptgen check-eligible path/to/hash/data/index/entries.jsonl
+hletterscriptgen scan-blobs path/to/scan.png --format json
+hletterscriptgen generate --profile generate_profile.json --output ./out
 ```
 
-The `generate` subcommand is reserved for the upcoming extraction pipeline
-and is not yet implemented; see [`docs/roadmap.md`](docs/roadmap.md).
+The `generate` command expects a human-curated generation profile that
+names writer IDs, upstream scan entries, and glyph bounding boxes. The
+output is one directory per writer, each containing `letter_set.json` and
+the surviving cropped glyph assets.
 
-## The `letter_set.v1` contract
+## The `letter_set.v1` Contract
 
-The bundled JSON Schema describes a per-writer letter set:
+The bundled schema describes one writer's letter-glyph collection:
 
-- One document per **writer**.
-- `letters` maps each Hebrew letter (base or final form, `U+05D0`–`U+05EA`)
-  to one or more **variants** extracted from upstream scans by that writer.
-- Each variant carries an `asset_path`, a SHA-256 checksum, image metadata,
-  and **per-variant source rights**, so license evidence flows through from
-  upstream into any downstream composition.
+- `writer_id` identifies the writer set.
+- `writer_provenance` records how the writer attribution was established.
+- `upstream` pins the exact HASH revision used by the generation run.
+- `letters` maps Hebrew letters and final forms to one or more glyph
+  variants.
+- Each variant carries an asset path, checksum, image metadata, source
+  scan ID, bounding box, license, and rights evidence.
+- `license_summary` summarizes the distinct variant-level licenses but
+  does not replace per-variant rights metadata.
 
-See [`docs/letter_set_v1.md`](docs/letter_set_v1.md) for the full
-explanation and field-by-field notes.
+Read the full contract in [`docs/letter_set_v1.md`](docs/letter_set_v1.md).
+
+## Validate Locally
+
+```bash
+python -m ruff check .
+python -m mypy
+python -m pytest
+hletterscriptgen validate examples/letter_set/writer_example.json
+```
 
 ## Licensing
 
-- Code in this repository: MIT (see [`LICENSE`](LICENSE)).
-- Generated letter sets: carry per-variant upstream rights — see
-  [`LICENSE-POLICY.md`](LICENSE-POLICY.md). The generator does not
-  relicense glyphs.
+- Code in this repository is MIT licensed. See [`LICENSE`](LICENSE).
+- Generated letter sets carry per-variant upstream rights. See
+  [`LICENSE-POLICY.md`](LICENSE-POLICY.md); the generator records rights
+  evidence but does not relicense glyphs.
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). For agent collaborators, see
-[`AGENTS.md`](AGENTS.md).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Agent collaborators should also
+read [`AGENTS.md`](AGENTS.md).
+
+## Credits
+
+Created by [Shay Palachy Affek ](http://www.shaypalachy.com/) [[GitHub](https://github.com/shaypal5)]
