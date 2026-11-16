@@ -43,7 +43,7 @@ copy it — only one diagram should ever rot.
 | Hosting per-writer letter-glyph datasets | `HeOCR/hletterscript` |
 | Composing synthetic Hebrew handwritten pages | `HeOCR/hocrsyngen` |
 | Dataset orchestration, governance, release assembly, publication | `HeOCR/hocrgen` |
-| Mixed-source published OCR/HTR datasets | `HeOCR/HeOCR` |
+| Mixed-source published OCR/HTR datasets | `HeOCR/heocr-datasets` |
 | Synthetic-only published datasets | `HeOCR/HeOCRsynth` |
 
 ## Why these boundaries
