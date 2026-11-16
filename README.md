@@ -52,7 +52,7 @@ What lives elsewhere:
   [`HeOCR/hocrsyngen`](https://github.com/HeOCR/hocrsyngen).
 - Dataset orchestration and release assembly:
   [`HeOCR/hocrgen`](https://github.com/HeOCR/hocrgen),
-  [`HeOCR/HeOCR`](https://github.com/HeOCR/HeOCR), and
+  [`HeOCR/heocr-datasets`](https://github.com/HeOCR/heocr-datasets), and
   [`HeOCR/HeOCRsynth`](https://github.com/HeOCR/HeOCRsynth).
 
 ## Pipeline Position
